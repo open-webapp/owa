@@ -2,6 +2,11 @@
   "name": "@open-webapp/drive-sync",
   "version": "0.1.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/open-webapp/owa",
+    "directory": "packages/drive-sync"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
