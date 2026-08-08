@@ -93,6 +93,94 @@ describe('acquireToken in-flight coalescing', () => {
     expect(second.accessToken).toBe('second-token')
   })
 
+  it('sync-style fan-out: 5 concurrent callers for identical scopes trigger exactly one GIS request, all resolving to the identical token', async () => {
+    // Mirrors a scheduled sync fanning out one acquireToken() call per filter
+    // rule (e.g. via Promise.all) — many concurrent call-sites, not just two.
+    const projectId = freshId('proj')
+    gisFake.queueResponse({ access_token: 'fan-out-token', expires_in: 3600, scope: SCOPES_A.join(' ') })
+
+    const opts = baseOpts({ projectId })
+    const results = await Promise.all([
+      acquireToken(opts),
+      acquireToken(opts),
+      acquireToken(opts),
+      acquireToken(opts),
+      acquireToken(opts),
+    ])
+
+    expect(gisFake.calls.length).toBe(1)
+    for (const token of results) {
+      expect(token).toEqual(results[0])
+      expect(token.accessToken).toBe('fan-out-token')
+    }
+  })
+
+  it('mixed-scope racing: interleaved concurrent calls for two different scopes on the same project each get their own token, with no cross-contamination', async () => {
+    // Regression guard for the old googleAuth.ts bug class: a shared
+    // module-level resolve/reject clobbered by a second concurrent request,
+    // which could hand one caller's token to another caller entirely. Here
+    // three callers race for SCOPES_A and two race for SCOPES_B, interleaved
+    // (not grouped), on the same project.
+    const projectId = freshId('proj')
+    gisFake.queueResponse({ access_token: 'token-a-shared', expires_in: 3600, scope: SCOPES_A.join(' ') })
+    gisFake.queueResponse({ access_token: 'token-b-shared', expires_in: 3600, scope: SCOPES_B.join(' ') })
+
+    const callA1 = acquireToken(baseOpts({ projectId, scopes: SCOPES_A }))
+    const callB1 = acquireToken(baseOpts({ projectId, scopes: SCOPES_B }))
+    const callA2 = acquireToken(baseOpts({ projectId, scopes: SCOPES_A }))
+    const callB2 = acquireToken(baseOpts({ projectId, scopes: SCOPES_B }))
+    const callA3 = acquireToken(baseOpts({ projectId, scopes: SCOPES_A }))
+
+    const [a1, b1, a2, b2, a3] = await Promise.all([callA1, callB1, callA2, callB2, callA3])
+
+    // Exactly one GIS request per distinct scope set, despite 5 interleaved callers.
+    expect(gisFake.calls.length).toBe(2)
+
+    // Every SCOPES_A caller got the SCOPES_A token, and only that token.
+    for (const token of [a1, a2, a3]) {
+      expect(token.accessToken).toBe('token-a-shared')
+    }
+    // Every SCOPES_B caller got the SCOPES_B token, and only that token.
+    for (const token of [b1, b2]) {
+      expect(token.accessToken).toBe('token-b-shared')
+    }
+  })
+
+  it('a shared in-flight rejection is propagated to every coalesced caller, and the key is cleared so the next call starts a fresh GIS request', async () => {
+    const projectId = freshId('proj')
+    gisFake.queueResponse({ error: 'access_denied' })
+
+    const opts = baseOpts({ projectId })
+    const settled = await Promise.all([
+      acquireToken(opts).then(
+        (v) => ({ status: 'resolved' as const, value: v }),
+        (e) => ({ status: 'rejected' as const, error: e })
+      ),
+      acquireToken(opts).then(
+        (v) => ({ status: 'resolved' as const, value: v }),
+        (e) => ({ status: 'rejected' as const, error: e })
+      ),
+      acquireToken(opts).then(
+        (v) => ({ status: 'resolved' as const, value: v }),
+        (e) => ({ status: 'rejected' as const, error: e })
+      ),
+    ])
+
+    expect(gisFake.calls.length).toBe(1)
+    for (const outcome of settled) {
+      expect(outcome.status).toBe('rejected')
+    }
+
+    // The failed in-flight entry must have been removed from the coalescing
+    // map (not left stuck), so a subsequent call for the same key retries
+    // against GIS instead of hanging or replaying the old rejection forever.
+    gisFake.queueResponse({ access_token: 'recovered-token', expires_in: 3600, scope: SCOPES_A.join(' ') })
+    const recovered = await acquireToken(opts)
+
+    expect(gisFake.calls.length).toBe(2)
+    expect(recovered.accessToken).toBe('recovered-token')
+  })
+
   it('both overlapping requests for different projects actually settle (neither hangs)', async () => {
     const projectIdOne = freshId('proj')
     const projectIdTwo = freshId('proj')
