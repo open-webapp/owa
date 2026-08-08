@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/drive-sync",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     ".": {
@@ -13,7 +13,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "SPEC.md"
   ],
   "scripts": {
     "build": "tsc",

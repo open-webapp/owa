@@ -1,0 +1,25 @@
+name: Publish drive-sync
+
+on:
+  push:
+    tags:
+      - 'drive-sync-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm install
+      - run: npm -w packages/drive-sync run build
+      - run: npm -w packages/drive-sync run test
+      - run: npm publish --access public --provenance --workspace packages/drive-sync
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
