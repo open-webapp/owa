@@ -5,6 +5,9 @@ import { createBroadcast } from './broadcast.js';
 import { acquireToken } from './token.js';
 import { WrongAccountError } from './errors.js';
 
+/** Mirrors refresh.ts's own buffer: a cached token this close to expiry is treated as unusable. */
+const TOKEN_REUSE_BUFFER_MS = 5 * 60 * 1000;
+
 export interface ConnectOptions {
   appId: string;
   projectId: string;
@@ -128,6 +131,47 @@ export async function getConnection(opts: GetConnectionOptions): Promise<Connect
     needsReauth,
     expiresAt: token?.expiresAt ?? null,
   };
+}
+
+export interface GetAccessTokenOptions {
+  appId: string;
+  projectId: string;
+  clientId: string;
+  scopes: string[];
+  /** Whether an interactive (popup) auth flow may be triggered if no usable cached token exists. */
+  interactive: boolean;
+  logger?: Logger;
+}
+
+/**
+ * Returns a raw OAuth access token for callers that must hand it directly to
+ * a Google-hosted widget this library does not control (namely Google
+ * Picker, which requires `setOAuthToken()`). This is a deliberate, narrow
+ * exception to Connection's "no secret material" contract documented in
+ * types.ts: Picker runs in Google's own popup/iframe and has no way to read
+ * a token this library keeps private, so the token must leave the library
+ * for that one integration to work at all. Callers should request this only
+ * to feed it straight to Picker, not to make their own Drive API calls
+ * (use `files`/`permissions` for that).
+ *
+ * Reuses a still-valid cached token as-is; otherwise acquires a fresh one
+ * via the normal token flow (interactive per `opts.interactive`).
+ */
+export async function getAccessToken(opts: GetAccessTokenOptions): Promise<string> {
+  const cached = await getToken(opts.appId, opts.projectId);
+  if (cached && cached.expiresAt > Date.now() + TOKEN_REUSE_BUFFER_MS) {
+    return cached.accessToken;
+  }
+
+  const token = await acquireToken({
+    appId: opts.appId,
+    projectId: opts.projectId,
+    clientId: opts.clientId,
+    scopes: opts.scopes,
+    interactive: opts.interactive,
+    logger: opts.logger,
+  });
+  return token.accessToken;
 }
 
 export interface DisconnectOptions {

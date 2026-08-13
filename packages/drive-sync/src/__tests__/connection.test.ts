@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { connect, getConnection, disconnect } from '../connection.js'
-import { getConn, getToken, clearToken } from '../storage.js'
+import { connect, getConnection, disconnect, getAccessToken } from '../connection.js'
+import { getConn, getToken, clearToken, setToken } from '../storage.js'
 import { createBroadcast } from '../broadcast.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 
@@ -179,5 +179,82 @@ describe('connection round trip (connect / getConnection / disconnect)', () => {
     const revokeFn2 = vi.fn().mockResolvedValue(undefined)
     await disconnect({ appId, projectId, revokeFn: revokeFn2 })
     expect(revokeFn2).not.toHaveBeenCalled()
+  })
+})
+
+describe('getAccessToken', () => {
+  let gisFake: GisFake
+
+  beforeEach(() => {
+    gisFake = createGisFake()
+    gisFake.install()
+  })
+
+  afterEach(() => {
+    gisFake.uninstall()
+  })
+
+  it('returns the cached token as-is when it is still comfortably valid, with no GIS round trip', async () => {
+    const { appId, projectId } = freshIds()
+    await setToken(appId, projectId, {
+      accessToken: 'cached-tok',
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      grantedScopes: SCOPES,
+    })
+
+    const callsBefore = gisFake.calls.length
+    const token = await getAccessToken({
+      appId,
+      projectId,
+      clientId: 'client-x',
+      scopes: SCOPES,
+      interactive: true,
+    })
+
+    expect(token).toBe('cached-tok')
+    expect(gisFake.calls.length).toBe(callsBefore)
+  })
+
+  it('acquires a fresh token when none is cached, and returns the raw access token string', async () => {
+    const { appId, projectId } = freshIds()
+    gisFake.queueResponse({
+      access_token: 'fresh-tok',
+      expires_in: 3600,
+      scope: SCOPES.join(' '),
+    })
+
+    const token = await getAccessToken({
+      appId,
+      projectId,
+      clientId: 'client-y',
+      scopes: SCOPES,
+      interactive: true,
+    })
+
+    expect(token).toBe('fresh-tok')
+  })
+
+  it('acquires a fresh token when the cached one is within the reuse buffer of expiring', async () => {
+    const { appId, projectId } = freshIds()
+    await setToken(appId, projectId, {
+      accessToken: 'stale-tok',
+      expiresAt: Date.now() + 60 * 1000, // within the 5-minute reuse buffer
+      grantedScopes: SCOPES,
+    })
+    gisFake.queueResponse({
+      access_token: 'renewed-tok',
+      expires_in: 3600,
+      scope: SCOPES.join(' '),
+    })
+
+    const token = await getAccessToken({
+      appId,
+      projectId,
+      clientId: 'client-z',
+      scopes: SCOPES,
+      interactive: false,
+    })
+
+    expect(token).toBe('renewed-tok')
   })
 })

@@ -32,6 +32,7 @@ await p.connect();                               // interactive; prompt:'consent
 const conn = await p.getConnection();            // { email, needsReauth, expiresAt } | null
 
 const folderId = await p.ensureFolderPath();
+const token = await p.getAccessToken();          // raw token, for Google Picker's setOAuthToken() only
 const files = await p.files.list({ folderId });
 const text = await p.files.read(fileId);         // string | Blob | null (null on 404)
 const ref = await p.files.write({ folderId, name: 'x.json', content, mimeType: 'application/json' });
@@ -44,7 +45,9 @@ dispose();
 
 `createDriveSync()` itself attaches no listeners and makes no network calls. Every Drive-op call site accepts an optional `{ interactive?: boolean }` (default `false`) and resolves its own token internally — no caller ever threads a token or a `projectId` string into an HTTP call by hand.
 
-Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
+Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
+
+`getAccessToken()` is the one deliberate exception to `Connection` never exposing secret material (types.ts): it exists solely so an app can feed the token to Google Picker (`setOAuthToken()`), which runs outside this library's control and has no other way to read it. Reuses a cached token while it has more than 5 minutes left; otherwise acquires one (interactive by default, since callers use this to drive a UI the user is actively interacting with).
 
 ## 2. The 34 resolved design decisions
 

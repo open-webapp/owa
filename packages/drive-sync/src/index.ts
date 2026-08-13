@@ -1,7 +1,7 @@
 import type { Logger } from './logger.js';
 import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef } from './types.js';
 import { noOpLogger } from './logger.js';
-import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl } from './connection.js';
+import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
 import * as filesImpl from './files.js';
 import * as permissionsImpl from './permissions.js';
@@ -86,6 +86,14 @@ export interface ProjectHandle {
   getConnection(): Promise<Connection | null>;
   disconnect(): Promise<void>;
   ensureFolderPath(): Promise<string>;
+  /**
+   * Raw OAuth access token, for handing directly to Google Picker
+   * (`setOAuthToken()`) — see connection.ts's `getAccessToken` for why this
+   * is the one exception to this library otherwise never exposing token
+   * material. `interactive` defaults to true since callers use this to
+   * drive a UI the user is actively interacting with.
+   */
+  getAccessToken(callOpts?: CallOptions): Promise<string>;
   files: FilesHandle;
   permissions: PermissionsHandle;
 }
@@ -262,6 +270,16 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       },
       ensureFolderPath() {
         return filesImpl.ensureFolderPath({ ...base, folderPath });
+      },
+      getAccessToken(callOpts) {
+        return getAccessTokenImpl({
+          appId,
+          projectId,
+          clientId,
+          scopes: REQUIRED_SCOPES,
+          interactive: callOpts?.interactive ?? true,
+          logger,
+        });
       },
       files,
       permissions,
