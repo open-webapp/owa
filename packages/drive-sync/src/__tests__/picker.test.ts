@@ -44,6 +44,11 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
   let pickerFake: PickerFake
 
   beforeEach(() => {
+    // Ensure window is available (Node environment needs this)
+    if (typeof window === 'undefined') {
+      ;(globalThis as any).window = globalThis
+    }
+
     __resetPickerScriptCacheForTests()
     gisFake = createGisFake()
     gisFake.install()
@@ -75,6 +80,13 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
   }
 
+  /** Wait for multiple microtask cycles to allow async operations to execute. */
+  async function waitForAsync(cycles = 5): Promise<void> {
+    for (let i = 0; i < cycles; i++) {
+      await new Promise((resolve) => queueMicrotask(resolve))
+    }
+  }
+
   // =====================================================================
   // Test 1: Options → PickerBuilder wiring
   // =====================================================================
@@ -88,6 +100,10 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       multiSelect: true,
       parentFolderId: 'folder1',
     })
+
+    // Wait for the PickerBuilder to be created (happens after token acquisition)
+    // Use a small delay to ensure async operations complete
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     // Verify pickerFake recorded the call with correct configuration
     expect(pickerFake.calls).toHaveLength(1)
@@ -271,6 +287,9 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       mimeTypes: ['docs', 'application/pdf'],
     })
 
+    // Wait for the PickerBuilder to be created (happens after token acquisition)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     expect(pickerFake.calls).toHaveLength(1)
     const call = pickerFake.calls[0]
     expect(call.views).toHaveLength(1)
@@ -294,6 +313,9 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       multiSelect: true,
       parentFolderId: 'folder-123',
     })
+
+    // Wait for the PickerBuilder to be created (happens after token acquisition)
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(pickerFake.calls).toHaveLength(1)
     const call = pickerFake.calls[0]
@@ -338,6 +360,9 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
       mimeTypes: ['sheets', 'slides', 'forms', 'drawings', 'application/json'],
     })
+
+    // Wait for the PickerBuilder to be created (happens after token acquisition)
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(pickerFake.calls).toHaveLength(1)
     const mimeTypes = pickerFake.calls[0].views[0].mimeTypes
