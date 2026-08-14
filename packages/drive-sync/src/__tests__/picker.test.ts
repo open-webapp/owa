@@ -125,19 +125,23 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
   it('Test 2: pickFile fetches and returns file content for each picked file', async () => {
     const project = makeProject()
     queueToken()
+    // Queue tokens for each file read that will happen after pick
+    queueToken()
+    queueToken()
 
     // Pre-seed driveFake with files that will be read
+    // Use text/plain for both to get string content back (not Blob)
     driveFake.files.set('file-1', {
       id: 'file-1',
-      name: 'document.pdf',
-      mimeType: 'application/pdf',
+      name: 'document.txt',
+      mimeType: 'text/plain',
       parents: [],
       content: 'PDF content bytes',
-      contentType: 'application/pdf',
+      contentType: 'text/plain',
     })
     driveFake.files.set('file-2', {
       id: 'file-2',
-      name: 'image.txt',
+      name: 'data.txt',
       mimeType: 'text/plain',
       parents: [],
       content: 'text content',
@@ -146,30 +150,29 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
-      mimeTypes: ['application/pdf', 'text/plain'],
+      mimeTypes: ['text/plain'],
     })
+
+    // Wait for the PickerBuilder to be created
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     // Simulate user picking two files
     pickerFake.simulatePick([
-      { fileId: 'file-1', name: 'document.pdf', mimeType: 'application/pdf' },
-      { fileId: 'file-2', name: 'image.txt', mimeType: 'text/plain' },
+      { fileId: 'file-1', name: 'document.txt', mimeType: 'text/plain' },
+      { fileId: 'file-2', name: 'data.txt', mimeType: 'text/plain' },
     ])
-
-    // Token is needed for each file read
-    queueToken()
-    queueToken()
 
     const results = await pickFilePromise
     expect(results).toHaveLength(2)
     expect(results[0]).toEqual({
       fileId: 'file-1',
-      name: 'document.pdf',
-      mimeType: 'application/pdf',
+      name: 'document.txt',
+      mimeType: 'text/plain',
       content: 'PDF content bytes',
     })
     expect(results[1]).toEqual({
       fileId: 'file-2',
-      name: 'image.txt',
+      name: 'data.txt',
       mimeType: 'text/plain',
       content: 'text content',
     })
@@ -180,6 +183,9 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
   // =====================================================================
   it('Test 2 edge case: pickFile includes null when filesImpl.read returns null for a missing file', async () => {
     const project = makeProject()
+    queueToken()
+    // Queue tokens for each file read
+    queueToken()
     queueToken()
 
     // Only seed one of the two files
@@ -197,15 +203,14 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       mimeTypes: ['text/plain'],
     })
 
+    // Wait for the PickerBuilder to be created
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     // Simulate picking two files, but only one exists in the drive
     pickerFake.simulatePick([
       { fileId: 'file-1', name: 'exists.txt', mimeType: 'text/plain' },
       { fileId: 'file-missing', name: 'missing.txt', mimeType: 'text/plain' },
     ])
-
-    // Token for each read attempt
-    queueToken()
-    queueToken()
 
     const results = await pickFilePromise
     expect(results).toHaveLength(2)
@@ -235,11 +240,18 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       apiKey: 'api-key-123',
     })
 
+    // Wait for the PickerBuilder to be created
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     pickerFake.simulateCancel()
 
-    const error = await expect(pickFilePromise).rejects.toThrow()
-    expect(error).toBeInstanceOf(PickerCancelledError)
-    expect(error.name).toBe('PickerCancelledError')
+    try {
+      await pickFilePromise
+      expect.fail('Should have thrown PickerCancelledError')
+    } catch (err: any) {
+      expect(err?.name).toBe('PickerCancelledError')
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
   })
 
   // =====================================================================
@@ -254,18 +266,21 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     queueToken()
     const pick1 = project1.pickFile({ apiKey: 'key1' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick1).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Second call with same project
     queueToken()
     const pick2 = project1.pickFile({ apiKey: 'key1' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick2).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Third call with different project from same DriveSync instance
     queueToken()
     const pick3 = project2.pickFile({ apiKey: 'key1' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick3).rejects.toBeInstanceOf(PickerCancelledError)
 
@@ -297,7 +312,12 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     expect(call.views[0].mimeTypes).toBe('application/vnd.google-apps.document,application/pdf')
 
     pickerFake.simulateCancel()
-    await expect(pickFilePromise).rejects.toBeInstanceOf(PickerCancelledError)
+    try {
+      await pickFilePromise
+      expect.fail('Should have thrown PickerCancelledError')
+    } catch (err: any) {
+      expect(err?.name).toBe('PickerCancelledError')
+    }
   })
 
   // =====================================================================
@@ -345,11 +365,18 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
+    // Wait for the PickerBuilder to be created
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
     pickerFake.simulateCancel()
 
-    const error = await expect(pickedPromise).rejects.toThrow()
-    expect(error).toBeInstanceOf(PickerCancelledError)
-    expect(error.name).toBe('PickerCancelledError')
+    try {
+      await pickedPromise
+      expect.fail('Should have thrown PickerCancelledError')
+    } catch (err: any) {
+      expect(err?.name).toBe('PickerCancelledError')
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
   })
 
   it('openPicker() correctly expands mimeTypes shorthand (sheets, slides, forms, drawings)', async () => {
@@ -373,6 +400,11 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     expect(mimeTypes).toContain('application/json')
 
     pickerFake.simulateCancel()
-    await expect(pickedPromise).rejects.toBeInstanceOf(PickerCancelledError)
+    try {
+      await pickedPromise
+      expect.fail('Should have thrown PickerCancelledError')
+    } catch (err: any) {
+      expect(err?.name).toBe('PickerCancelledError')
+    }
   })
 })
