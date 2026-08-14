@@ -24,6 +24,7 @@ export interface PickerFakeFile {
 export interface PickerRecordedCall {
   oauthToken?: string
   developerKey?: string
+  appId?: string
   views: Array<{
     mimeTypes?: string
     parentId?: string
@@ -112,6 +113,11 @@ export function createPickerFake(): PickerFake {
 
     setDeveloperKey(key: string): FakePickerBuilder {
       this.currentCall.developerKey = key
+      return this
+    }
+
+    setAppId(appId: string): FakePickerBuilder {
+      this.currentCall.appId = appId
       return this
     }
 

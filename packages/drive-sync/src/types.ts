@@ -47,6 +47,12 @@ export type WorkspaceMimeShorthand = 'docs' | 'sheets' | 'slides' | 'forms' | 'd
 /** Options for opening the Google Picker to select files. */
 export interface PickFileOptions {
   apiKey: string;
+  /**
+   * Cloud project *number* of the OAuth client configured on
+   * `DriveSyncOptions.clientId`. Passed to Picker's `setAppId()`; required
+   * because drive-sync only ever holds a `drive.file`-scoped token.
+   */
+  appId: string;
   mimeTypes?: (string | WorkspaceMimeShorthand)[];
   multiSelect?: boolean;
   parentFolderId?: string;

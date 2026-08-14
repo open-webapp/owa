@@ -90,12 +90,39 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
   // =====================================================================
   // Test 1: Options → PickerBuilder wiring
   // =====================================================================
+  it('Test 0: pickFile sets the Picker appId (drive.file sessions are rejected without it)', async () => {
+    // Regression: drive-sync only ever holds a drive.file-scoped token. Picker
+    // discards an OAuth token it cannot attribute to a Cloud project, shows its
+    // own sign-in prompt instead of the file browser, and then fails the
+    // unauthenticated developer-key check ("The API developer key is invalid").
+    const project = makeProject()
+    queueToken()
+
+    const pickFilePromise = project.pickFile({
+      apiKey: 'api-key-123',
+      appId: 'app-id-42',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls).toHaveLength(1)
+    const call = pickerFake.calls[0]
+    expect(call.appId).toBe('app-id-42')
+    // appId only matters alongside a real OAuth session, so assert both landed.
+    expect(call.oauthToken).toBeTruthy()
+    expect(call.developerKey).toBe('api-key-123')
+
+    pickerFake.simulateCancel()
+    await expect(pickFilePromise).rejects.toBeInstanceOf(PickerCancelledError)
+  })
+
   it('Test 1: pickFile configures PickerBuilder with correct options (apiKey, mimeTypes, multiSelect, parentFolderId)', async () => {
     const project = makeProject()
     queueToken()
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
+      appId: 'app-id-42',
       mimeTypes: ['application/pdf'],
       multiSelect: true,
       parentFolderId: 'folder1',
@@ -150,6 +177,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
+      appId: 'app-id-42',
       mimeTypes: ['text/plain'],
     })
 
@@ -200,6 +228,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
+      appId: 'app-id-42',
       mimeTypes: ['text/plain'],
     })
 
@@ -238,6 +267,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
+      appId: 'app-id-42',
     })
 
     // Wait for the PickerBuilder to be created
@@ -265,21 +295,21 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     const project2 = ds.project(`${projectId}-2`)
 
     queueToken()
-    const pick1 = project1.pickFile({ apiKey: 'key1' })
+    const pick1 = project1.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
     await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick1).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Second call with same project
     queueToken()
-    const pick2 = project1.pickFile({ apiKey: 'key1' })
+    const pick2 = project1.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
     await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick2).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Third call with different project from same DriveSync instance
     queueToken()
-    const pick3 = project2.pickFile({ apiKey: 'key1' })
+    const pick3 = project2.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
     await new Promise((resolve) => setTimeout(resolve, 10))
     pickerFake.simulateCancel()
     await expect(pick3).rejects.toBeInstanceOf(PickerCancelledError)
@@ -299,6 +329,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickFilePromise = project.pickFile({
       apiKey: 'api-key-123',
+      appId: 'app-id-42',
       mimeTypes: ['docs', 'application/pdf'],
     })
 
@@ -328,6 +359,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickedPromise = openPicker({
       apiKey: 'dev-key',
+      appId: 'app-id-42',
       oauthToken: 'auth-token',
       mimeTypes: ['text/plain'],
       multiSelect: true,
@@ -362,6 +394,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickedPromise = openPicker({
       apiKey: 'dev-key',
+      appId: 'app-id-42',
       oauthToken: 'auth-token',
     })
 
@@ -384,6 +417,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     const pickedPromise = openPicker({
       apiKey: 'dev-key',
+      appId: 'app-id-42',
       oauthToken: 'auth-token',
       mimeTypes: ['sheets', 'slides', 'forms', 'drawings', 'application/json'],
     })

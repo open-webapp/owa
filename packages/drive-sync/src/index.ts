@@ -295,6 +295,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
         const picked = await pickerImpl.openPicker({
           apiKey: options.apiKey,
           oauthToken: token,
+          appId: options.appId,
           mimeTypes: options.mimeTypes,
           multiSelect: options.multiSelect,
           parentFolderId: options.parentFolderId,

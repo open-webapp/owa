@@ -35,6 +35,7 @@ interface PickerBuilder {
   addView(view: DocsView): PickerBuilder;
   setOAuthToken(token: string): PickerBuilder;
   setDeveloperKey(key: string): PickerBuilder;
+  setAppId(appId: string): PickerBuilder;
   enableFeature(feature: string): PickerBuilder;
   setCallback(callback: (data: PickerResponse) => void): PickerBuilder;
   build(): PickerInstance;
@@ -157,6 +158,15 @@ export function __resetPickerScriptCacheForTests(): void {
 export interface OpenPickerOptions {
   apiKey: string;
   oauthToken: string;
+  /**
+   * The Cloud project *number* of the OAuth client that minted `oauthToken`.
+   * Required: this library requests only the `drive.file` scope, and Picker
+   * refuses to run a scoped session it cannot attribute to an app. Omit it and
+   * Picker discards the OAuth token, falls back to its own sign-in prompt, and
+   * then fails the unauthenticated developer-key check with "The API developer
+   * key is invalid" — even though the key and its referrer restrictions are fine.
+   */
+  appId: string;
   mimeTypes?: (string | WorkspaceMimeShorthand)[];
   multiSelect?: boolean;
   parentFolderId?: string;
@@ -203,7 +213,8 @@ export async function openPicker(opts: OpenPickerOptions): Promise<PickedFile[]>
   pickerBuilder
     .addView(docsView)
     .setOAuthToken(opts.oauthToken)
-    .setDeveloperKey(opts.apiKey);
+    .setDeveloperKey(opts.apiKey)
+    .setAppId(opts.appId);
 
   // Enable multi-select if requested
   if (opts.multiSelect) {

@@ -31,7 +31,7 @@ const p = drive.project(projectId);
 await p.connect();                               // interactive; prompt:'consent'
 const conn = await p.getConnection();            // { email, needsReauth, expiresAt } | null
 
-const picked = await p.pickFile({ apiKey: PICKER_API_KEY });  // file-selection via Google Picker
+const picked = await p.pickFile({ apiKey: PICKER_API_KEY, appId: GCP_PROJECT_NUMBER });  // file-selection via Google Picker
 const folderId = await p.ensureFolderPath();
 const token = await p.getAccessToken();          // raw token for advanced/custom Picker wiring; pickFile() is the preferred path for most uses
 const files = await p.files.list({ folderId });
@@ -92,7 +92,7 @@ Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHand
 32. **`reconcile`/`dropProject`** — `reconcile.ts`: `reconcile(appId, knownProjectIds)` enumerates via `indexedDB.databases()` and deletes any `owa-drive-{appId}-*` DB not in the known set; `dropProject(appId, projectId)` deletes one DB eagerly and evicts its cached handle.
 33. **No timer; warm-up on `visibilitychange`/`pageshow`** — `refresh.ts`'s `activate()` attaches both listeners (only when called; none at import time), gated on `document.visibilityState === 'visible'` / `event.persisted && !document.hidden`; `warmUpIfNeeded` only fires if a connection exists **and** the token is missing or within a 5-minute buffer (`REFRESH_BUFFER_MS`) of expiry. `index.ts`'s top-level `activate()` also layers a `trackedProjectIds` Set so one global listener pair drives warm-ups for every project ever passed to `.project(id)`.
 34. **`interactive` option, default `false`** — every `BaseCallOptions`-shaped call in `files.ts`/`permissions.ts`/`http.ts` defaults `interactive` to falsy; a non-interactive call with no usable token throws `NeedsReauthError` rather than silently prompting.
-35. **Google Picker integration** — `picker.ts`'s `pickFile` accepts an `apiKey` per-call (not stored in `DriveSyncOptions`); `index.ts` and `connection.ts` resolve the token, but `picker.ts` only ever sees a plain string token to avoid secret exposure. Script loading is cached at module level to avoid repeated GIS-loader calls. On user cancel, `PickerCancelledError` is thrown; on success, `FileRef` is returned. Drive scope prerequisites and token refresh are handled transparently (`picker.ts` takes the token and makes the Picker call; no token-boundary complexity leaks to callers).
+35. **Google Picker integration** — `picker.ts`'s `pickFile` accepts an `apiKey` and an `appId` (the OAuth client's Cloud project number) per-call (not stored in `DriveSyncOptions`); `appId` is mandatory because drive-sync holds only a `drive.file`-scoped token and Picker rejects a scoped session it cannot attribute to an app — omitting it makes Picker drop the OAuth token, show its own sign-in prompt, and fail with "The API developer key is invalid"; `index.ts` and `connection.ts` resolve the token, but `picker.ts` only ever sees a plain string token to avoid secret exposure. Script loading is cached at module level to avoid repeated GIS-loader calls. On user cancel, `PickerCancelledError` is thrown; on success, `FileRef` is returned. Drive scope prerequisites and token refresh are handled transparently (`picker.ts` takes the token and makes the Picker call; no token-boundary complexity leaks to callers).
 
 ## 3. Storage layout
 
