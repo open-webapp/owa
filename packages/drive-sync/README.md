@@ -24,6 +24,7 @@ await drive.reconcile(knownProjectIds)
 
 const p = drive.project(projectId)
 await p.connect()
+const picked = await p.pickFile({ apiKey: PICKER_API_KEY })
 const folderId = await p.ensureFolderPath()
 await p.files.write({ folderId, name: 'data.json', content: '{}', mimeType: 'application/json' })
 ```

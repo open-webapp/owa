@@ -113,3 +113,11 @@ export class GisLoadError extends Error {
     this.name = 'GisLoadError';
   }
 }
+
+/** Thrown when the user cancels the Google Picker dialog. */
+export class PickerCancelledError extends DriveSyncError {
+  constructor(message = 'User cancelled the picker', opts?: DriveSyncErrorOptions) {
+    super(message, opts);
+    this.name = 'PickerCancelledError';
+  }
+}

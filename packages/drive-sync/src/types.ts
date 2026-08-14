@@ -41,6 +41,25 @@ export interface DrivePermission {
   emailAddress?: string;
 }
 
+/** Google Workspace MIME type shorthands for common document types. */
+export type WorkspaceMimeShorthand = 'docs' | 'sheets' | 'slides' | 'forms' | 'drawings';
+
+/** Options for opening the Google Picker to select files. */
+export interface PickFileOptions {
+  apiKey: string;
+  mimeTypes?: (string | WorkspaceMimeShorthand)[];
+  multiSelect?: boolean;
+  parentFolderId?: string;
+}
+
+/** File information returned after selection from Google Picker. */
+export interface PickedFile {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  content: string | Blob | null;
+}
+
 /** Options accepted on every Drive-op call site. */
 export interface CallOptions {
   /** Whether an interactive (popup/redirect) auth flow may be triggered. Defaults to false. */

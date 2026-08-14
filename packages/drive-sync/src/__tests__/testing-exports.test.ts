@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createDriveFake, createGisFake } from '../testing/index.js'
+import { createDriveFake, createGisFake, createPickerFake } from '../testing/index.js'
 
 describe('testing subpath exports', () => {
   it('createGisFake returns an object with the expected methods', () => {
@@ -21,5 +21,9 @@ describe('testing subpath exports', () => {
     expect(typeof driveFake.reset).toBe('function')
     expect(driveFake.files).toBeDefined()
     expect(driveFake.permissions).toBeDefined()
+  })
+
+  it('createPickerFake is exported and returns a function', () => {
+    expect(typeof createPickerFake).toBe('function')
   })
 })

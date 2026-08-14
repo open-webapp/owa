@@ -1,17 +1,18 @@
 import type { Logger } from './logger.js';
-import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef } from './types.js';
+import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
 import * as filesImpl from './files.js';
 import * as permissionsImpl from './permissions.js';
+import * as pickerImpl from './picker.js';
 import { warmUpIfNeeded } from './refresh.js';
 import { REQUIRED_SCOPES } from './files.js';
 import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, DrivePermission, CallOptions } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -94,6 +95,7 @@ export interface ProjectHandle {
    * drive a UI the user is actively interacting with.
    */
   getAccessToken(callOpts?: CallOptions): Promise<string>;
+  pickFile(options: PickFileOptions): Promise<PickedFile[]>;
   files: FilesHandle;
   permissions: PermissionsHandle;
 }
@@ -280,6 +282,29 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           interactive: callOpts?.interactive ?? true,
           logger,
         });
+      },
+      async pickFile(options) {
+        const token = await getAccessTokenImpl({
+          appId,
+          projectId,
+          clientId,
+          scopes: REQUIRED_SCOPES,
+          interactive: true,
+          logger,
+        });
+        const picked = await pickerImpl.openPicker({
+          apiKey: options.apiKey,
+          oauthToken: token,
+          mimeTypes: options.mimeTypes,
+          multiSelect: options.multiSelect,
+          parentFolderId: options.parentFolderId,
+        });
+        const results: PickedFile[] = [];
+        for (const p of picked) {
+          const content = await filesImpl.read({ ...base, fileId: p.fileId, interactive: true });
+          results.push({ fileId: p.fileId, name: p.name, mimeType: p.mimeType, content });
+        }
+        return results;
       },
       files,
       permissions,

@@ -31,8 +31,9 @@ const p = drive.project(projectId);
 await p.connect();                               // interactive; prompt:'consent'
 const conn = await p.getConnection();            // { email, needsReauth, expiresAt } | null
 
+const picked = await p.pickFile({ apiKey: PICKER_API_KEY });  // file-selection via Google Picker
 const folderId = await p.ensureFolderPath();
-const token = await p.getAccessToken();          // raw token, for Google Picker's setOAuthToken() only
+const token = await p.getAccessToken();          // raw token for advanced/custom Picker wiring; pickFile() is the preferred path for most uses
 const files = await p.files.list({ folderId });
 const text = await p.files.read(fileId);         // string | Blob | null (null on 404)
 const ref = await p.files.write({ folderId, name: 'x.json', content, mimeType: 'application/json' });
@@ -45,11 +46,11 @@ dispose();
 
 `createDriveSync()` itself attaches no listeners and makes no network calls. Every Drive-op call site accepts an optional `{ interactive?: boolean }` (default `false`) and resolves its own token internally — no caller ever threads a token or a `projectId` string into an HTTP call by hand.
 
-Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
+Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
 
 `getAccessToken()` is the one deliberate exception to `Connection` never exposing secret material (types.ts): it exists solely so an app can feed the token to Google Picker (`setOAuthToken()`), which runs outside this library's control and has no other way to read it. Reuses a cached token while it has more than 5 minutes left; otherwise acquires one (interactive by default, since callers use this to drive a UI the user is actively interacting with).
 
-## 2. The 34 resolved design decisions
+## 2. The 35 resolved design decisions
 
 **Bugs fixed (both source apps carried these):**
 
@@ -91,6 +92,7 @@ Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHand
 32. **`reconcile`/`dropProject`** — `reconcile.ts`: `reconcile(appId, knownProjectIds)` enumerates via `indexedDB.databases()` and deletes any `owa-drive-{appId}-*` DB not in the known set; `dropProject(appId, projectId)` deletes one DB eagerly and evicts its cached handle.
 33. **No timer; warm-up on `visibilitychange`/`pageshow`** — `refresh.ts`'s `activate()` attaches both listeners (only when called; none at import time), gated on `document.visibilityState === 'visible'` / `event.persisted && !document.hidden`; `warmUpIfNeeded` only fires if a connection exists **and** the token is missing or within a 5-minute buffer (`REFRESH_BUFFER_MS`) of expiry. `index.ts`'s top-level `activate()` also layers a `trackedProjectIds` Set so one global listener pair drives warm-ups for every project ever passed to `.project(id)`.
 34. **`interactive` option, default `false`** — every `BaseCallOptions`-shaped call in `files.ts`/`permissions.ts`/`http.ts` defaults `interactive` to falsy; a non-interactive call with no usable token throws `NeedsReauthError` rather than silently prompting.
+35. **Google Picker integration** — `picker.ts`'s `pickFile` accepts an `apiKey` per-call (not stored in `DriveSyncOptions`); `index.ts` and `connection.ts` resolve the token, but `picker.ts` only ever sees a plain string token to avoid secret exposure. Script loading is cached at module level to avoid repeated GIS-loader calls. On user cancel, `PickerCancelledError` is thrown; on success, `FileRef` is returned. Drive scope prerequisites and token refresh are handled transparently (`picker.ts` takes the token and makes the Picker call; no token-boundary complexity leaks to callers).
 
 ## 3. Storage layout
 
