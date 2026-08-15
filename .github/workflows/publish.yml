@@ -23,6 +23,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
       - run: npm install
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
       - run: npm -w packages/drive-sync run test
       - run: npm publish --access public --provenance --workspace packages/drive-sync
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
