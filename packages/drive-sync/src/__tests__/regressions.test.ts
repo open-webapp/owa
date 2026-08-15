@@ -420,8 +420,14 @@ describe('drive-sync regression suite', () => {
     // instead and rely on a longer test timeout.
     const driveFake = createDriveFake()
     let callCount = 0
+    // Counts only content fetches. read() also issues a metadata request to
+    // record its sync baseline, which is not part of the retry behaviour
+    // under test here and would otherwise inflate these counts.
+    let mediaCallCount = 0
     const countingFetch: typeof fetch = (async (input: any, init?: RequestInit) => {
       callCount++
+      const url = typeof input === 'string' ? input : input?.url ?? String(input)
+      if (url.includes('alt=media')) mediaCallCount++
       return driveFake.fetch(input, init)
     }) as typeof fetch
     vi.stubGlobal('fetch', countingFetch)
@@ -441,9 +447,12 @@ describe('drive-sync regression suite', () => {
     const project = ds.project(projectId)
 
     // (a) 429 with Retry-After: 2 on attempt 1 only; attempt 2 succeeds.
-    driveFake.setStatusOverride('', 429, { retryAfter: 2, times: 1 })
+    // Scoped to the content fetch: read() also issues a metadata request for
+    // its sync baseline, and this case is about retrying the content GET.
+    driveFake.setStatusOverride('alt=media', 429, { retryAfter: 2, times: 1 })
     gisFake.queueResponse({ access_token: 'tok-a', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
     callCount = 0
+    mediaCallCount = 0
 
     let settledA = false
     const pA = project.files.read('file-1')
@@ -456,7 +465,7 @@ describe('drive-sync regression suite', () => {
 
     const resultA = await pA
     expect(resultA).toBe('hello')
-    expect(callCount).toBe(2)
+    expect(mediaCallCount).toBe(2)
 
     // (b) three consecutive 500s -> TransientError after exactly 3 attempts.
     driveFake.setStatusOverride('', 500, { times: 3 })

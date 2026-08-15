@@ -106,6 +106,44 @@ export class TransientError extends DriveSyncError {
   }
 }
 
+export interface RemoteChangedErrorOptions extends DriveSyncErrorOptions {
+  fileId: string;
+  /** Version this client last restored, or null if it has never restored this file. */
+  baseVersion: string | null;
+  /** Version currently on Drive. */
+  remoteVersion: string;
+  reason: 'remote-changed' | 'never-restored';
+}
+
+/**
+ * Thrown when a write would clobber remote content this client has not seen.
+ *
+ * There is deliberately no `force` option: the only way past this error is to
+ * restore the remote file with `files.read()`, which records the remote
+ * version as the new baseline. From there the caller may either merge the
+ * remote content into their own and write the merged result, or discard the
+ * remote content and write their local version — but both paths require
+ * having pulled the changed file first.
+ */
+export class RemoteChangedError extends DriveSyncError {
+  fileId: string;
+  baseVersion: string | null;
+  remoteVersion: string;
+
+  constructor(opts: RemoteChangedErrorOptions) {
+    super(
+      opts.reason === 'never-restored'
+        ? `File ${opts.fileId} has never been restored by this client; read() it before writing`
+        : `File ${opts.fileId} changed on Drive since it was last restored`,
+      { status: 409, ...opts }
+    );
+    this.name = 'RemoteChangedError';
+    this.fileId = opts.fileId;
+    this.baseVersion = opts.baseVersion;
+    this.remoteVersion = opts.remoteVersion;
+  }
+}
+
 /** Thrown when the Google Identity Services script never loaded within the timeout. */
 export class GisLoadError extends Error {
   constructor(message = 'Google Identity Services failed to load in time') {

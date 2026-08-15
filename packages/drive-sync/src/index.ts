@@ -1,5 +1,5 @@
 import type { Logger } from './logger.js';
-import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef, PickFileOptions, PickedFile } from './types.js';
+import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
@@ -12,7 +12,7 @@ import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -55,7 +55,16 @@ export interface FilesHandle {
     mimeType?: string;
     nameEquals?: string;
   }, callOpts?: CallOptions): Promise<FileRef[]>;
+  /**
+   * Fetches content AND records the file's current remote version as this
+   * client's baseline — the only way to clear a RemoteChangedError.
+   */
   read(fileId: string, callOpts?: CallOptions): Promise<string | Blob | null>;
+  /**
+   * Metadata-only check for whether the file changed since it was last
+   * restored here. Downloads no content; safe to poll.
+   */
+  status(fileId: string, callOpts?: CallOptions): Promise<FileState>;
   write(opts: {
     fileId?: string;
     folderId?: string;
@@ -215,6 +224,9 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       },
       read(fileId, callOpts) {
         return filesImpl.read({ ...base, fileId, interactive: callOpts?.interactive });
+      },
+      status(fileId, callOpts) {
+        return filesImpl.status({ ...base, fileId, interactive: callOpts?.interactive });
       },
       write(opts, callOpts) {
         return filesImpl.write({ ...base, ...opts, interactive: callOpts?.interactive });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDriveSync, type ProjectHandle } from '../index.js'
 import { REQUIRED_SCOPES } from '../files.js'
-import { NeedsReauthError } from '../errors.js'
+import { NeedsReauthError, RemoteChangedError } from '../errors.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 import { createDriveFake, type DriveFake } from '../testing/driveFake.js'
 
@@ -152,6 +152,11 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
       content: 'old content',
       contentType: 'application/json',
     })
+
+    // Restoring first is now a precondition of writing to a file this
+    // client has not seen — see RemoteChangedError.
+    queueToken()
+    await project.files.read('existing-file-456')
 
     queueToken()
     const written = await project.files.write({ fileId: 'existing-file-456', content: 'new content', mimeType: 'application/json' })
@@ -324,6 +329,11 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
       contentType: 'text/plain',
     })
 
+    // Restoring first is now a precondition of writing to a file this
+    // client has not seen — see RemoteChangedError.
+    queueToken()
+    await project.files.read('file-1')
+
     queueToken()
     const written = await project.files.write({ fileId: 'file-1', content: 'new text content', mimeType: 'text/plain' })
     expect(written.id).toBe('file-1')
@@ -344,6 +354,11 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
       content: 'old bytes',
       contentType: 'application/octet-stream',
     })
+
+    // Restoring first is now a precondition of writing to a file this
+    // client has not seen — see RemoteChangedError.
+    queueToken()
+    await project.files.read('file-2')
 
     const blob = new Blob(['new blob bytes'], { type: 'application/octet-stream' })
     queueToken()
@@ -421,5 +436,164 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     queueToken()
     const results = await project.files.list({ folderId, mimeType: 'text/plain' })
     expect(results.map((f) => f.id)).toEqual(['file-a'])
+  })
+
+  // ---------------------------------------------------------------------
+  // File-state tracking: a write must never clobber a remote change this
+  // client has not seen. read() is the only thing that clears the block.
+  // ---------------------------------------------------------------------
+
+  it('write() is refused when the file changed on Drive since it was last restored', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'notes.txt', content: 'v1', mimeType: 'text/plain' })
+
+    // Somebody else edits the same file.
+    driveFake.externalEdit(file.id, 'their edit')
+
+    queueToken()
+    const err = await project.files
+      .write({ fileId: file.id, content: 'my local edit', mimeType: 'text/plain' })
+      .catch((e) => e)
+
+    expect(err).toBeInstanceOf(RemoteChangedError)
+    expect(err.fileId).toBe(file.id)
+    expect(err.reason).toBe('remote-changed')
+    expect(err.status).toBe(409)
+    expect(err.baseVersion).not.toBe(err.remoteVersion)
+
+    // Crucially, the other client's content is still intact on Drive.
+    expect(driveFake.files.get(file.id)!.content).toBe('their edit')
+  })
+
+  it('restoring the changed file unblocks the write, so a merge can be saved', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'notes.txt', content: 'mine', mimeType: 'text/plain' })
+    driveFake.externalEdit(file.id, 'theirs')
+
+    queueToken()
+    await expect(
+      project.files.write({ fileId: file.id, content: 'mine', mimeType: 'text/plain' })
+    ).rejects.toBeInstanceOf(RemoteChangedError)
+
+    // Path 1 — restore, merge the two sides, write the merged result.
+    queueToken()
+    const remote = await project.files.read(file.id)
+    expect(remote).toBe('theirs')
+
+    queueToken()
+    await project.files.write({ fileId: file.id, content: `${remote as string}+mine`, mimeType: 'text/plain' })
+    expect(driveFake.files.get(file.id)!.content).toBe('theirs+mine')
+  })
+
+  it('restoring also unblocks a deliberate overwrite, and only after restoring', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'notes.txt', content: 'mine', mimeType: 'text/plain' })
+    driveFake.externalEdit(file.id, 'theirs')
+
+    // Path 2 — restore (discarding what came back), then write local content.
+    queueToken()
+    await project.files.read(file.id)
+
+    queueToken()
+    await project.files.write({ fileId: file.id, content: 'mine only', mimeType: 'text/plain' })
+    expect(driveFake.files.get(file.id)!.content).toBe('mine only')
+  })
+
+  it('write() to a file this client has never restored is refused as never-restored', async () => {
+    const project = makeProject()
+    await connect(project)
+    driveFake.files.set('someone-elses', {
+      id: 'someone-elses',
+      name: 'shared.txt',
+      mimeType: 'text/plain',
+      parents: [],
+      content: 'not mine',
+      contentType: 'text/plain',
+    })
+
+    queueToken()
+    const err = await project.files
+      .write({ fileId: 'someone-elses', content: 'clobber', mimeType: 'text/plain' })
+      .catch((e) => e)
+
+    expect(err).toBeInstanceOf(RemoteChangedError)
+    expect(err.reason).toBe('never-restored')
+    expect(err.baseVersion).toBeNull()
+    expect(driveFake.files.get('someone-elses')!.content).toBe('not mine')
+  })
+
+  it('name-resolved sync writes are guarded too, so a remote edit is never silently overwritten', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'sync.txt', content: 'v1', mimeType: 'text/plain' })
+    driveFake.externalEdit(file.id, 'remote v2')
+
+    // Same by-name sync call as the happy path, but it must not clobber.
+    queueToken()
+    await expect(
+      project.files.write({ name: 'sync.txt', content: 'v2', mimeType: 'text/plain' })
+    ).rejects.toBeInstanceOf(RemoteChangedError)
+
+    expect(driveFake.files.get(file.id)!.content).toBe('remote v2')
+    // ...and no escape hatch of creating a duplicate instead.
+    expect([...driveFake.files.values()].filter((f) => f.name === 'sync.txt')).toHaveLength(1)
+  })
+
+  it('status() reports drift without downloading content, and clears after a restore', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'notes.txt', content: 'v1', mimeType: 'text/plain' })
+
+    queueToken()
+    const clean = await project.files.status(file.id)
+    expect(clean.exists).toBe(true)
+    expect(clean.changedSinceRestore).toBe(false)
+    expect(clean.baseVersion).toBe(clean.remoteVersion)
+    expect(clean.lastRestoredAt).toBeTypeOf('number')
+
+    driveFake.externalEdit(file.id, 'theirs')
+
+    queueToken()
+    const drifted = await project.files.status(file.id)
+    expect(drifted.changedSinceRestore).toBe(true)
+    expect(drifted.remoteVersion).not.toBe(drifted.baseVersion)
+
+    queueToken()
+    await project.files.read(file.id)
+
+    queueToken()
+    const settled = await project.files.status(file.id)
+    expect(settled.changedSinceRestore).toBe(false)
+  })
+
+  it('status() reports a deleted file as non-existent rather than throwing', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const file = await project.files.write({ name: 'gone.txt', content: 'v1', mimeType: 'text/plain' })
+
+    queueToken()
+    await project.files.remove(file.id)
+
+    queueToken()
+    const state = await project.files.status(file.id)
+    expect(state.exists).toBe(false)
+    expect(state.remoteVersion).toBeNull()
+    // remove() cleared the baseline, so nothing stale is left behind.
+    expect(state.baseVersion).toBeNull()
   })
 })

@@ -25,6 +25,11 @@ export interface DriveFakeFile {
   content: string
   contentType?: string
   trashed?: boolean
+  /**
+   * Drive's monotonic per-file change counter, bumped on every mutation.
+   * Optional so tests may seed files without it; treated as 1 when absent.
+   */
+  version?: number
 }
 
 export interface DriveFakePermission {
@@ -52,6 +57,11 @@ export interface DriveFake {
   reset(): void
   /** Inspect current in-memory files, keyed by id. */
   readonly files: Map<string, DriveFakeFile>
+  /**
+   * Simulate another client editing the file: replaces content and bumps
+   * `version`, exactly as a real out-of-band Drive write would.
+   */
+  externalEdit(fileId: string, content: string): void
   /** Inspect current in-memory permissions, keyed by fileId then permission id. */
   readonly permissions: Map<string, Map<string, DriveFakePermission>>
 }
@@ -197,7 +207,7 @@ export function createDriveFake(): DriveFake {
   }
 
   function fileToMetadata(f: DriveFakeFile): Record<string, unknown> {
-    return { id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents }
+    return { id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, version: String(f.version ?? 1) }
   }
 
   async function handleFilesList(url: URL): Promise<Response> {
@@ -275,6 +285,7 @@ export function createDriveFake(): DriveFake {
       parents: Array.isArray(metadata.parents) ? metadata.parents : [],
       content,
       contentType: mediaType,
+      version: 1,
     }
     files.set(id, file)
 
@@ -297,6 +308,7 @@ export function createDriveFake(): DriveFake {
       file.content = bodyText
       const contentType = getHeader(init, 'Content-Type')
       if (contentType) file.contentType = contentType
+      file.version = (file.version ?? 1) + 1
       return jsonResponse(fileToMetadata(file))
     }
 
@@ -311,6 +323,7 @@ export function createDriveFake(): DriveFake {
         if (Array.isArray(parsed.metadata.parents)) file.parents = parsed.metadata.parents
         file.content = parsed.mediaContent
         if (parsed.mediaType) file.contentType = parsed.mediaType
+        file.version = (file.version ?? 1) + 1
       }
       return jsonResponse(fileToMetadata(file))
     }
@@ -337,6 +350,7 @@ export function createDriveFake(): DriveFake {
       const removeSet = new Set(removeParents.split(','))
       file.parents = file.parents.filter((p) => !removeSet.has(p))
     }
+    file.version = (file.version ?? 1) + 1
 
     return jsonResponse(fileToMetadata(file))
   }
@@ -458,6 +472,12 @@ export function createDriveFake(): DriveFake {
         body: opts?.body,
         remaining: opts?.times ?? 1,
       })
+    },
+    externalEdit(fileId: string, content: string) {
+      const file = files.get(fileId)
+      if (!file) throw new Error(`driveFake.externalEdit: unknown file ${fileId}`)
+      file.content = content
+      file.version = (file.version ?? 1) + 1
     },
     reset() {
       files.clear()

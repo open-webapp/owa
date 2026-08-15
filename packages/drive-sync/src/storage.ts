@@ -8,14 +8,31 @@ export interface ConnRecord {
   connectedAt: number;
 }
 
+/**
+ * Per-file sync baseline: the Drive `version` this client last restored (via
+ * files.read()) or last successfully wrote. A write is only allowed when the
+ * file's current remote version still matches this — see files.ts.
+ */
+export interface FileStateRecord {
+  fileId: string;
+  version: string;
+  /** Epoch ms at which this baseline was recorded. */
+  syncedAt: number;
+}
+
 interface AuthDbSchema extends DBSchema {
   auth: {
     key: string;
     value: ConnRecord | StoredToken;
   };
+  files: {
+    key: string;
+    value: FileStateRecord;
+  };
 }
 
 const AUTH_STORE = 'auth';
+const FILES_STORE = 'files';
 const CONN_KEY = 'conn';
 const TOKEN_KEY = 'token';
 
@@ -36,10 +53,16 @@ export function openAuthDb(
   const key = cacheKey(appId, projectId);
   let handle = dbCache.get(key);
   if (!handle) {
-    handle = openDB<AuthDbSchema>(dbName(appId, projectId), 1, {
+    // v2 added the 'files' store for per-file sync baselines. The upgrade is
+    // additive and each createObjectStore is guarded, so a v1 database opens
+    // at v2 by gaining the new store and keeps its existing auth records.
+    handle = openDB<AuthDbSchema>(dbName(appId, projectId), 2, {
       upgrade(db) {
         if (!db.objectStoreNames.contains(AUTH_STORE)) {
           db.createObjectStore(AUTH_STORE);
+        }
+        if (!db.objectStoreNames.contains(FILES_STORE)) {
+          db.createObjectStore(FILES_STORE);
         }
       },
     });
@@ -113,4 +136,31 @@ export async function setToken(
 export async function clearToken(appId: string, projectId: string): Promise<void> {
   const db = await openAuthDb(appId, projectId);
   await db.delete(AUTH_STORE, TOKEN_KEY);
+}
+
+export async function getFileState(
+  appId: string,
+  projectId: string,
+  fileId: string
+): Promise<FileStateRecord | undefined> {
+  const db = await openAuthDb(appId, projectId);
+  return db.get(FILES_STORE, fileId);
+}
+
+export async function setFileState(
+  appId: string,
+  projectId: string,
+  state: FileStateRecord
+): Promise<void> {
+  const db = await openAuthDb(appId, projectId);
+  await db.put(FILES_STORE, state, state.fileId);
+}
+
+export async function clearFileState(
+  appId: string,
+  projectId: string,
+  fileId: string
+): Promise<void> {
+  const db = await openAuthDb(appId, projectId);
+  await db.delete(FILES_STORE, fileId);
 }

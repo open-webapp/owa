@@ -31,6 +31,27 @@ export interface StoredToken {
 export interface FileRef {
   id: string;
   name?: string;
+  /** Drive's monotonic change counter, when the call requested it. */
+  version?: string;
+}
+
+/**
+ * Sync state of one file relative to what this client last restored.
+ * Returned by `files.status()`.
+ */
+export interface FileState {
+  fileId: string;
+  /** False when the file is missing or not visible to the connected account. */
+  exists: boolean;
+  /** Version last restored/written by this client; null if never. */
+  baseVersion: string | null;
+  /** Version currently on Drive; null when the file does not exist. */
+  remoteVersion: string | null;
+  /** True when a write would be refused with a RemoteChangedError. */
+  changedSinceRestore: boolean;
+  remoteModifiedTime?: string;
+  /** Epoch ms of the last restore/write by this client; null if never. */
+  lastRestoredAt: number | null;
 }
 
 /** Drive permission shape as returned/accepted by the Drive Permissions API. */
