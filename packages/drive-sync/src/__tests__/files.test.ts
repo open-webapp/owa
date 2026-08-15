@@ -596,4 +596,39 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     // remove() cleared the baseline, so nothing stale is left behind.
     expect(state.baseVersion).toBeNull()
   })
+
+  it('list() returns modifiedTime when the fake file has one, and leaves it undefined when not seeded', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    const withTimestampId = freshId('file')
+    driveFake.files.set(withTimestampId, {
+      id: withTimestampId,
+      name: 'has-timestamp.txt',
+      mimeType: 'text/plain',
+      parents: [],
+      content: 'x',
+      modifiedTime: '2026-01-01T00:00:00.000Z',
+    })
+
+    const withoutTimestampId = freshId('file')
+    driveFake.files.set(withoutTimestampId, {
+      id: withoutTimestampId,
+      name: 'no-timestamp.txt',
+      mimeType: 'text/plain',
+      parents: [],
+      content: 'y',
+    })
+
+    queueToken()
+    const results = await project.files.list({})
+    const withTimestamp = results.find((f) => f.id === withTimestampId)
+    const withoutTimestamp = results.find((f) => f.id === withoutTimestampId)
+
+    expect(withTimestamp?.modifiedTime).toBe('2026-01-01T00:00:00.000Z')
+    expect(withoutTimestamp?.modifiedTime).toBeUndefined()
+    expect(withoutTimestamp?.id).toBe(withoutTimestampId)
+    expect(withoutTimestamp?.name).toBe('no-timestamp.txt')
+    expect(withoutTimestamp?.mimeType).toBe('text/plain')
+  })
 })

@@ -30,6 +30,12 @@ export interface DriveFakeFile {
    * Optional so tests may seed files without it; treated as 1 when absent.
    */
   version?: number
+  /**
+   * Drive's last-modified timestamp; optional so tests may seed files
+   * without it (omitted from the fake's response in that case, matching
+   * real Drive's `fields`-gated behavior).
+   */
+  modifiedTime?: string
 }
 
 export interface DriveFakePermission {
@@ -207,7 +213,14 @@ export function createDriveFake(): DriveFake {
   }
 
   function fileToMetadata(f: DriveFakeFile): Record<string, unknown> {
-    return { id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, version: String(f.version ?? 1) }
+    return {
+      id: f.id,
+      name: f.name,
+      mimeType: f.mimeType,
+      parents: f.parents,
+      version: String(f.version ?? 1),
+      modifiedTime: f.modifiedTime,
+    }
   }
 
   async function handleFilesList(url: URL): Promise<Response> {

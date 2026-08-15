@@ -378,9 +378,11 @@ function buildQuery(opts: ListOptions): string {
 export async function list(opts: ListOptions): Promise<FileRef[]> {
   const q = buildQuery(opts);
   // `version` comes back so the name-resolution path in write() can run its
-  // staleness check without a follow-up metadata fetch.
+  // staleness check without a follow-up metadata fetch. `modifiedTime` is
+  // also requested so callers can get a last-modified timestamp per file
+  // without an extra round trip.
   const url = `${DRIVE_BASE}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(
-    'files(id,name,mimeType,version)'
+    'files(id,name,mimeType,version,modifiedTime)'
   )}`;
 
   const res = await driveFetch({

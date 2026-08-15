@@ -33,6 +33,8 @@ export interface FileRef {
   name?: string;
   /** Drive's monotonic change counter, when the call requested it. */
   version?: string;
+  /** Drive's last-modified timestamp (RFC3339), when the call requested it. */
+  modifiedTime?: string;
 }
 
 /**

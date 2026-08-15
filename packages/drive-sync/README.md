@@ -29,7 +29,7 @@ const folderId = await p.ensureFolderPath()
 await p.files.write({ folderId, name: 'data.json', content: '{}', mimeType: 'application/json' })
 ```
 
-See `SPEC.md` for the full design: the 34 resolved decisions, storage layout,
+See `SPEC.md` for the full design: the 36 resolved decisions, storage layout,
 and refresh state machine. `SPEC.md` is descriptive, written from the shipped
 code — if it ever disagrees with the source, the source wins.
 
