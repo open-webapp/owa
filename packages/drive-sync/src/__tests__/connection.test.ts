@@ -3,6 +3,7 @@ import { connect, getConnection, disconnect, getAccessToken } from '../connectio
 import { getConn, getToken, clearToken, setToken } from '../storage.js'
 import { createBroadcast } from '../broadcast.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
+import { NeedsReauthError } from '../errors.js'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
@@ -265,15 +266,11 @@ describe('getAccessToken', () => {
   // ---------------------------------------------------------------------
 
   it('rejects rather than hanging when the sign-in popup is blocked by the browser', async () => {
-    const appId = freshId('app')
-    const projectId = freshId('proj')
-    const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
-    const project = ds.project(projectId)
-
+    const { appId, projectId } = freshIds()
     gisFake.queuePopupError('popup_failed_to_open')
 
     const settled = await Promise.race([
-      project.connect().then(
+      connect({ appId, projectId, clientId: 'client-1', scopes: SCOPES, fetchEmail: vi.fn() }).then(
         () => 'resolved' as const,
         (e: unknown) => e
       ),
@@ -286,21 +283,18 @@ describe('getAccessToken', () => {
   })
 
   it('rejects rather than hanging when the user closes the sign-in popup', async () => {
-    const appId = freshId('app')
-    const projectId = freshId('proj')
-    const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
-    const project = ds.project(projectId)
-
+    const { appId, projectId } = freshIds()
     gisFake.queuePopupError('popup_closed')
 
     const settled = await Promise.race([
-      project.connect().then(
+      connect({ appId, projectId, clientId: 'client-1', scopes: SCOPES, fetchEmail: vi.fn() }).then(
         () => 'resolved' as const,
         (e: unknown) => e
       ),
       new Promise((r) => setTimeout(() => r('HUNG'), 1000)),
     ])
 
+    expect(settled).not.toBe('HUNG')
     expect(settled).toBeInstanceOf(NeedsReauthError)
     expect((settled as NeedsReauthError).reason).toBe('popup_closed')
   })
