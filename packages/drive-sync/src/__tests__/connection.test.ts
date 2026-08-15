@@ -257,4 +257,51 @@ describe('getAccessToken', () => {
 
     expect(token).toBe('renewed-tok')
   })
+
+  // ---------------------------------------------------------------------
+  // A popup-level failure must settle the call. GIS reports these through
+  // error_callback only, so anything awaiting the token — ensureFolderPath
+  // on a sync click, for instance — hangs forever if it is not wired up.
+  // ---------------------------------------------------------------------
+
+  it('rejects rather than hanging when the sign-in popup is blocked by the browser', async () => {
+    const appId = freshId('app')
+    const projectId = freshId('proj')
+    const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
+    const project = ds.project(projectId)
+
+    gisFake.queuePopupError('popup_failed_to_open')
+
+    const settled = await Promise.race([
+      project.connect().then(
+        () => 'resolved' as const,
+        (e: unknown) => e
+      ),
+      new Promise((r) => setTimeout(() => r('HUNG'), 1000)),
+    ])
+
+    expect(settled).not.toBe('HUNG')
+    expect(settled).toBeInstanceOf(NeedsReauthError)
+    expect((settled as NeedsReauthError).reason).toBe('popup_failed_to_open')
+  })
+
+  it('rejects rather than hanging when the user closes the sign-in popup', async () => {
+    const appId = freshId('app')
+    const projectId = freshId('proj')
+    const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
+    const project = ds.project(projectId)
+
+    gisFake.queuePopupError('popup_closed')
+
+    const settled = await Promise.race([
+      project.connect().then(
+        () => 'resolved' as const,
+        (e: unknown) => e
+      ),
+      new Promise((r) => setTimeout(() => r('HUNG'), 1000)),
+    ])
+
+    expect(settled).toBeInstanceOf(NeedsReauthError)
+    expect((settled as NeedsReauthError).reason).toBe('popup_closed')
+  })
 })

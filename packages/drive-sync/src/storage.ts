@@ -23,18 +23,26 @@ export interface FileStateRecord {
 interface AuthDbSchema extends DBSchema {
   auth: {
     key: string;
-    value: ConnRecord | StoredToken;
-  };
-  files: {
-    key: string;
-    value: FileStateRecord;
+    value: ConnRecord | StoredToken | FileStateRecord;
   };
 }
 
 const AUTH_STORE = 'auth';
-const FILES_STORE = 'files';
 const CONN_KEY = 'conn';
 const TOKEN_KEY = 'token';
+
+/**
+ * File baselines live in the existing 'auth' store under a namespaced key
+ * rather than in a store of their own, deliberately: adding a store means
+ * bumping the DB version, and an upgrade cannot run while ANY other
+ * connection still holds the old version open. Older tabs run older code
+ * that has no way to know it should close, so the upgrade would block
+ * indefinitely and every Drive call — which needs this DB for its token —
+ * would hang rather than fail. Keeping the schema at v1 avoids that entirely.
+ */
+function fileKey(fileId: string): string {
+  return `file:${fileId}`;
+}
 
 function dbName(appId: string, projectId: string): string {
   return `owa-drive-${appId}-${projectId}`;
@@ -53,17 +61,16 @@ export function openAuthDb(
   const key = cacheKey(appId, projectId);
   let handle = dbCache.get(key);
   if (!handle) {
-    // v2 added the 'files' store for per-file sync baselines. The upgrade is
-    // additive and each createObjectStore is guarded, so a v1 database opens
-    // at v2 by gaining the new store and keeps its existing auth records.
-    handle = openDB<AuthDbSchema>(dbName(appId, projectId), 2, {
+    handle = openDB<AuthDbSchema>(dbName(appId, projectId), 1, {
       upgrade(db) {
         if (!db.objectStoreNames.contains(AUTH_STORE)) {
           db.createObjectStore(AUTH_STORE);
         }
-        if (!db.objectStoreNames.contains(FILES_STORE)) {
-          db.createObjectStore(FILES_STORE);
-        }
+      },
+      // Defence for any FUTURE version bump: close this connection as soon as
+      // another tab needs to upgrade, so it is never the thing blocking.
+      blocking() {
+        void evictDbHandle(appId, projectId);
       },
     });
     dbCache.set(key, handle);
@@ -144,7 +151,8 @@ export async function getFileState(
   fileId: string
 ): Promise<FileStateRecord | undefined> {
   const db = await openAuthDb(appId, projectId);
-  return db.get(FILES_STORE, fileId);
+  const value = await db.get(AUTH_STORE, fileKey(fileId));
+  return value as FileStateRecord | undefined;
 }
 
 export async function setFileState(
@@ -153,7 +161,7 @@ export async function setFileState(
   state: FileStateRecord
 ): Promise<void> {
   const db = await openAuthDb(appId, projectId);
-  await db.put(FILES_STORE, state, state.fileId);
+  await db.put(AUTH_STORE, state, fileKey(state.fileId));
 }
 
 export async function clearFileState(
@@ -162,5 +170,5 @@ export async function clearFileState(
   fileId: string
 ): Promise<void> {
   const db = await openAuthDb(appId, projectId);
-  await db.delete(FILES_STORE, fileId);
+  await db.delete(AUTH_STORE, fileKey(fileId));
 }

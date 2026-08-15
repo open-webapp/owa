@@ -53,6 +53,12 @@ export interface GisFake {
   calls: GisRecordedCall[]
   /** Queue a response to be delivered to the next `requestAccessToken` call. */
   queueResponse(response: GisTokenResponse): void
+  /**
+   * Queue a popup-level failure for the next `requestAccessToken` call,
+   * delivered via `error_callback` — the channel the real GIS client uses
+   * for a blocked or dismissed popup, which never reaches `callback`.
+   */
+  queuePopupError(type: string): void
   /** Stub `window.google.accounts.oauth2.initTokenClient` with this fake. */
   install(): void
   /** Remove the stub installed by `install()`, restoring prior state. */
@@ -63,6 +69,7 @@ export interface GisFake {
 
 export function createGisFake(): GisFake {
   const responseQueue: GisTokenResponse[] = []
+  const popupErrorQueue: (string | undefined)[] = []
   const calls: GisRecordedCall[] = []
   let previousGoogle: unknown
   let hadGoogle = false
@@ -82,6 +89,15 @@ export function createGisFake(): GisFake {
         const scope = overrideConfig?.scope ?? config.scope ?? ''
 
         calls.push({ prompt, hint, scope })
+
+        const popupError = popupErrorQueue.shift()
+        if (popupError) {
+          const errorCallback = config.error_callback
+          queueMicrotask(() => {
+            errorCallback?.({ type: popupError })
+          })
+          return
+        }
 
         const response = nextResponse()
         const callback = config.callback
@@ -106,6 +122,9 @@ export function createGisFake(): GisFake {
     calls,
     queueResponse(response: GisTokenResponse) {
       responseQueue.push(response)
+    },
+    queuePopupError(type: string) {
+      popupErrorQueue.push(type)
     },
     install() {
       const w = globalThis as unknown as { google?: any }
@@ -133,6 +152,7 @@ export function createGisFake(): GisFake {
     },
     reset() {
       responseQueue.length = 0
+      popupErrorQueue.length = 0
       calls.length = 0
     },
   }

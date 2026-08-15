@@ -13,10 +13,21 @@ interface GisTokenResponse {
   error?: string;
 }
 
+/**
+ * Shape of the object GIS passes to `error_callback`. This is a DIFFERENT
+ * channel from `callback`: popup-level failures (blocked by the browser,
+ * dismissed by the user) are reported here and never reach `callback`.
+ */
+interface GisErrorResponse {
+  type?: string;
+  message?: string;
+}
+
 interface GisTokenClientConfig {
   client_id: string;
   scope: string;
   callback: (response: GisTokenResponse) => void;
+  error_callback?: (error: GisErrorResponse) => void;
   [key: string]: unknown;
 }
 
@@ -174,6 +185,22 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
           return;
         }
         resolve(res);
+      },
+      // Without this, a popup that the browser blocks or the user closes
+      // settles NOTHING: GIS reports those through error_callback only, so
+      // the promise below would stay pending forever and every awaiting
+      // Drive call would hang until the caller's own timeout (if any).
+      error_callback: (err: GisErrorResponse) => {
+        reject(
+          new NeedsReauthError(
+            err?.type === 'popup_failed_to_open'
+              ? 'Google sign-in popup was blocked by the browser'
+              : err?.type === 'popup_closed'
+                ? 'Google sign-in popup was closed before completing'
+                : `Google sign-in failed: ${err?.type ?? 'unknown error'}`,
+            { reason: err?.type ?? 'gis_error' }
+          )
+        );
       },
     });
 
