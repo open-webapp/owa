@@ -116,6 +116,31 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     expect(readBack).toBe('hello world')
   })
 
+  it('write() by name updates the file already in use instead of creating a new one on every sync', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    queueToken()
+    const first = await project.files.write({ name: 'sync.txt', content: 'v1', mimeType: 'text/plain' })
+
+    queueToken()
+    const second = await project.files.write({ name: 'sync.txt', content: 'v2', mimeType: 'text/plain' })
+
+    queueToken()
+    const third = await project.files.write({ name: 'sync.txt', content: 'v3', mimeType: 'text/plain' })
+
+    // Same Drive file throughout — no duplicates minted per sync.
+    expect(second.id).toBe(first.id)
+    expect(third.id).toBe(first.id)
+
+    queueToken()
+    const matches = await project.files.list({ nameEquals: 'sync.txt' })
+    expect(matches).toHaveLength(1)
+
+    queueToken()
+    expect(await project.files.read(first.id)).toBe('v3')
+  })
+
   it('write() updates an existing file via media upload when fileId is given, and the content round-trips (ported: "updates existing file with PATCH when existingFileId provided")', async () => {
     const project = makeProject()
     await connect(project)

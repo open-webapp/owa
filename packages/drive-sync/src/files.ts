@@ -93,6 +93,24 @@ function toBlob(content: string | Blob, mimeType: string): Blob {
   return content instanceof Blob ? content : new Blob([content], { type: mimeType });
 }
 
+async function updateContent(opts: WriteOptions, fileId: string): Promise<FileRef> {
+  const res = await driveFetch({
+    appId: opts.appId,
+    projectId: opts.projectId,
+    clientId: opts.clientId,
+    url: `${UPLOAD_BASE}/files/${encodeURIComponent(fileId)}?uploadType=media`,
+    method: 'PATCH',
+    headers: { 'Content-Type': opts.mimeType },
+    body: opts.content,
+    interactive: opts.interactive,
+    requiredScopes: REQUIRED_SCOPES,
+    logger: opts.logger,
+    fetchEmail: opts.fetchEmail,
+  });
+  const json = (await res.json()) as { id: string; name?: string };
+  return { id: json.id, name: json.name ?? opts.name };
+}
+
 /**
  * Creates or updates a file's content. Updates (fileId provided) use the
  * media-upload endpoint with the raw body. Creates use a `FormData`
@@ -100,24 +118,32 @@ function toBlob(content: string | Blob, mimeType: string): Blob {
  * so file content that happens to contain a literal boundary-looking string
  * can never corrupt the request (a known bug in a hand-rolled-boundary
  * implementation this replaces).
+ *
+ * When no fileId is given but a name is, an existing non-trashed file with
+ * that name (within `folderId`, when given) is looked up first and updated
+ * in place. Without this, a caller that syncs by name — having no id to
+ * hand back, e.g. on a fresh page load — would mint a brand-new Drive file
+ * on every single sync instead of updating the file already in use.
  */
 export async function write(opts: WriteOptions): Promise<FileRef> {
   if (opts.fileId) {
-    const res = await driveFetch({
+    return updateContent(opts, opts.fileId);
+  }
+
+  if (opts.name) {
+    const existing = await list({
       appId: opts.appId,
       projectId: opts.projectId,
       clientId: opts.clientId,
-      url: `${UPLOAD_BASE}/files/${encodeURIComponent(opts.fileId)}?uploadType=media`,
-      method: 'PATCH',
-      headers: { 'Content-Type': opts.mimeType },
-      body: opts.content,
+      folderId: opts.folderId,
+      nameEquals: opts.name,
       interactive: opts.interactive,
-      requiredScopes: REQUIRED_SCOPES,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
     });
-    const json = (await res.json()) as { id: string; name?: string };
-    return { id: json.id, name: json.name ?? opts.name };
+    if (existing.length > 0) {
+      return updateContent(opts, existing[0].id);
+    }
   }
 
   const metadata: Record<string, unknown> = {
