@@ -8,5 +8,8 @@
   "scripts": {
     "build": "npm run build -ws --if-present",
     "test": "npm run test -ws --if-present"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
   }
 }
