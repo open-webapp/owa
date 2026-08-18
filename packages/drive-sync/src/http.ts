@@ -2,7 +2,7 @@ import type { Logger } from './logger.js';
 import type { StoredToken } from './types.js';
 import { acquireToken } from './token.js';
 import { getConnection, refreshSilently } from './connection.js';
-import { clearToken } from './storage.js';
+import { clearToken, getToken } from './storage.js';
 import {
   DriveSyncError,
   NeedsReauthError,
@@ -38,6 +38,8 @@ export interface DriveFetchOptions {
 
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 500;
+/** Mirrors connection.ts's own buffer: a cached token this close to expiry is treated as unusable. */
+const TOKEN_REUSE_BUFFER_MS = 5 * 60 * 1000;
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
@@ -75,6 +77,18 @@ async function sleep(ms: number): Promise<void> {
 export async function driveFetch(opts: DriveFetchOptions): Promise<Response> {
   const { appId, projectId, clientId, requiredScopes, logger } = opts;
   const interactive = !!opts.interactive;
+
+  // Reuse a still-valid cached token as-is on the non-interactive path,
+  // exactly like connection.ts's getAccessToken() already does — without
+  // this check every single Drive call (not just an actual token expiry)
+  // forced its own live, non-interactive GIS round-trip via acquireToken
+  // below, even when the cached token had plenty of life left.
+  if (!interactive) {
+    const cached = await getToken(appId, projectId);
+    if (cached && cached.expiresAt > Date.now() + TOKEN_REUSE_BUFFER_MS) {
+      return performFetch(opts, cached.accessToken, /* isRetryAfter401 */ false);
+    }
+  }
 
   // Resolve a hint email from the current connection (if any) so a
   // non-interactive silent refresh can target the right account. If there is

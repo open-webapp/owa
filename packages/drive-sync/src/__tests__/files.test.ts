@@ -631,4 +631,21 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     expect(withoutTimestamp?.name).toBe('no-timestamp.txt')
     expect(withoutTimestamp?.mimeType).toBe('text/plain')
   })
+
+  it('reuses a still-valid cached token across calls instead of re-acquiring one from GIS on every request', async () => {
+    const project = makeProject()
+    await connect(project) // 1 GIS call
+
+    // Deliberately do NOT queueToken() again: if a later call still triggers
+    // its own GIS round-trip, gisFake's default response keeps it "working"
+    // but the call count below reveals the redundant round-trip.
+    const file = await project.files.write({ name: 'reuse.txt', content: 'v1', mimeType: 'text/plain' })
+    await project.files.write({ fileId: file.id, content: 'v2', mimeType: 'text/plain' })
+    await project.files.read(file.id)
+    await project.files.list({})
+
+    // Every request above ran on the same still-fresh (1hr expiry) cached
+    // token, so only the initial connect() should have gone to GIS.
+    expect(gisFake.calls).toHaveLength(1)
+  })
 })

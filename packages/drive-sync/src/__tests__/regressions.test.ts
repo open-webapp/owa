@@ -256,7 +256,10 @@ describe('drive-sync regression suite', () => {
     const appId = freshId('app')
     const projectId = freshId('proj')
 
-    gisFake.queueResponse({ access_token: 'tok-initial', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    // Short expiry (under driveFetch's 5-minute reuse buffer) so the
+    // subsequent files.read() below can't just reuse this cached token and
+    // must actually go through the silent-refresh path under test here.
+    gisFake.queueResponse({ access_token: 'tok-initial', expires_in: 60, scope: REQUIRED_SCOPES.join(' ') })
     const fetchEmail = vi.fn().mockResolvedValue('a@x.com')
     await connectDirect({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES, fetchEmail })
 
@@ -316,7 +319,10 @@ describe('drive-sync regression suite', () => {
 
     const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
 
-    gisFake.queueResponse({ access_token: 'tok-initial', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    // Short expiry (under driveFetch's 5-minute reuse buffer) so the
+    // files.read() below can't just reuse this cached token and must go
+    // through its own pre-401 token acquisition, as this test expects.
+    gisFake.queueResponse({ access_token: 'tok-initial', expires_in: 60, scope: REQUIRED_SCOPES.join(' ') })
     const conn = await ds.project(projectId).connect()
     expect(conn.email).toBe('a@x.com')
 
