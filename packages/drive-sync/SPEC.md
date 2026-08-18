@@ -96,6 +96,10 @@ Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHand
 
 36. **`list()` returns `modifiedTime`** — `files.ts`'s `list()` requests `modifiedTime` alongside `id,name,mimeType,version` (same field `fetchRemoteVersion` already fetches per-file for `status()`); `FileRef.modifiedTime` (`types.ts`) is optional since older/unfetched responses may omit it.
 
+37. **`ensureFolderPath()` supports optional `subPath` for nested folder navigation** — `files.ts`'s `ensureFolderPath` now accepts an optional `subPath: string[]` parameter. When `subPath` is omitted, it resolves the full `folderPath` from factory options (original behavior). When provided, `subPath` is resolved relative to the folder resolved by the full `folderPath`, allowing nested folder creation/navigation without changing the factory `folderPath`. Multiple concurrent calls for the same path use "oldest-wins" semantics: if two tabs both call `ensureFolderPath()` for the same path simultaneously, the first successful create (or find, if the path already exists) wins; the second call reuses the result. This prevents race-condition folder duplication during concurrent tab operations.
+
+38. **`files.update()` provides metadata-only, baseline-preserving updates** — `files.ts` now exports an `update()` method that rewrites a file's metadata (name, description, mimeType, etc.) without modifying its content or version history. The update is guaranteed to preserve the file's baseline content: if a concurrent write to the same file completes between the read and update, the `update()` call will fail with a conflict error rather than silently clobbering the concurrent change. This gives apps a way to rename/reclassify a file after upload without risking accidental content loss. The method is content-agnostic, accepting only metadata fields and refusing any content-bearing parameter.
+
 ## 3. Storage layout
 
 Each project gets its own IndexedDB database: **`owa-drive-{appId}-{projectId}`**, version 1, containing one object store, `auth` (`storage.ts`). The store holds exactly two keys:

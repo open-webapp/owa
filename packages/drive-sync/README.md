@@ -27,6 +27,15 @@ await p.connect()
 const picked = await p.pickFile({ apiKey: PICKER_API_KEY, appId: GCP_PROJECT_NUMBER })
 const folderId = await p.ensureFolderPath()
 await p.files.write({ folderId, name: 'data.json', content: '{}', mimeType: 'application/json' })
+
+// ensureFolderPath() with subPath for nested folder navigation
+const nestedFolderId = await p.ensureFolderPath({ subPath: ['Archive', 'Q1'] })
+
+// files.update() for metadata-only or baseline-preserving updates
+const ref = await p.files.update(fileId, {
+  name: 'renamed.json',  // metadata-only change
+  mimeType: 'application/json',
+})
 ```
 
 See `SPEC.md` for the full design: the 36 resolved decisions, storage layout,
