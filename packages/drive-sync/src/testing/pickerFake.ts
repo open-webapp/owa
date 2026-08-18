@@ -25,11 +25,14 @@ export interface PickerRecordedCall {
   oauthToken?: string
   developerKey?: string
   appId?: string
+  origin?: string
   views: Array<{
     mimeTypes?: string
     parentId?: string
+    includeFolders?: boolean
   }>
   features: string[]
+  disposed?: boolean
 }
 
 export interface PickerFake {
@@ -59,11 +62,12 @@ export function createPickerFake(): PickerFake {
 
   /**
    * Fake DocsView class for stubbing window.google.picker.DocsView.
-   * Stores MIME types and parent folder ID, and is chainable.
+   * Stores MIME types, parent folder ID, and includeFolders flag, and is chainable.
    */
   class FakeDocsView {
     mimeTypes?: string
     parentId?: string
+    includeFolders?: boolean
 
     setMimeTypes(types: string): FakeDocsView {
       this.mimeTypes = types
@@ -74,17 +78,39 @@ export function createPickerFake(): PickerFake {
       this.parentId = folderId
       return this
     }
+
+    setIncludeFolders(include: boolean): FakeDocsView {
+      this.includeFolders = include
+      return this
+    }
   }
 
   /**
    * Fake PickerInstance (returned by PickerBuilder.build()).
    * When setVisible(true) is called, it's recorded but callback is not fired
    * until simulatePick or simulateCancel is called.
+   * Tracks dispose() calls for testing teardown behavior.
    */
   class FakePickerInstance {
+    private disposeCallback?: () => void
+
     setVisible(visible: boolean): void {
       // Visibility change is recorded implicitly by the builder construction.
       // The callback will be triggered by simulatePick/simulateCancel.
+    }
+
+    dispose(): void {
+      if (this.disposeCallback) {
+        this.disposeCallback()
+      }
+    }
+
+    /**
+     * Internal method used by the fake to register a dispose callback.
+     * Not part of the real Picker API.
+     */
+    __onDispose(callback: () => void): void {
+      this.disposeCallback = callback
     }
   }
 
@@ -97,11 +123,13 @@ export function createPickerFake(): PickerFake {
       views: [],
       features: [],
     }
+    private currentInstance: FakePickerInstance | null = null
 
     addView(view: FakeDocsView): FakePickerBuilder {
       this.currentCall.views.push({
         mimeTypes: view.mimeTypes,
         parentId: view.parentId,
+        includeFolders: view.includeFolders,
       })
       return this
     }
@@ -121,6 +149,11 @@ export function createPickerFake(): PickerFake {
       return this
     }
 
+    setOrigin(origin: string): FakePickerBuilder {
+      this.currentCall.origin = origin
+      return this
+    }
+
     enableFeature(feature: string): FakePickerBuilder {
       this.currentCall.features.push(feature)
       return this
@@ -133,8 +166,17 @@ export function createPickerFake(): PickerFake {
 
     build(): FakePickerInstance {
       // Record the call once build() is invoked (not before, so all config is captured)
+      const callIndex = calls.length
       calls.push(this.currentCall)
-      return new FakePickerInstance()
+
+      // Create instance and set up dispose tracking
+      this.currentInstance = new FakePickerInstance()
+      this.currentInstance.__onDispose(() => {
+        // Mark the call as disposed
+        calls[callIndex].disposed = true
+      })
+
+      return this.currentInstance
     }
   }
 

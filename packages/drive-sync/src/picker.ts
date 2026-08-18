@@ -36,6 +36,7 @@ interface PickerBuilder {
   setOAuthToken(token: string): PickerBuilder;
   setDeveloperKey(key: string): PickerBuilder;
   setAppId(appId: string): PickerBuilder;
+  setOrigin(origin: string): PickerBuilder;
   enableFeature(feature: string): PickerBuilder;
   setCallback(callback: (data: PickerResponse) => void): PickerBuilder;
   build(): PickerInstance;
@@ -44,10 +45,12 @@ interface PickerBuilder {
 interface DocsView {
   setMimeTypes(types: string): DocsView;
   setParent(folderId: string): DocsView;
+  setIncludeFolders(include: boolean): DocsView;
 }
 
 interface PickerInstance {
   setVisible(visible: boolean): void;
+  dispose?(): void;
 }
 
 interface PickerResponse {
@@ -170,6 +173,7 @@ export interface OpenPickerOptions {
   mimeTypes?: (string | WorkspaceMimeShorthand)[];
   multiSelect?: boolean;
   parentFolderId?: string;
+  includeFolders?: boolean;
 }
 
 export interface PickedFile {
@@ -208,6 +212,11 @@ export async function openPicker(opts: OpenPickerOptions): Promise<PickedFile[]>
     docsView.setParent(opts.parentFolderId);
   }
 
+  // Include folders if requested
+  if (opts.includeFolders) {
+    docsView.setIncludeFolders(true);
+  }
+
   // Create and configure the PickerBuilder
   const pickerBuilder = new window.google!.picker!.PickerBuilder();
   pickerBuilder
@@ -216,6 +225,11 @@ export async function openPicker(opts: OpenPickerOptions): Promise<PickedFile[]>
     .setDeveloperKey(opts.apiKey)
     .setAppId(opts.appId);
 
+  // Set origin if available (required for apps served under a base path)
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    pickerBuilder.setOrigin(window.location.origin);
+  }
+
   // Enable multi-select if requested
   if (opts.multiSelect) {
     pickerBuilder.enableFeature(window.google!.picker!.Feature.MULTISELECT_ENABLED);
@@ -223,9 +237,61 @@ export async function openPicker(opts: OpenPickerOptions): Promise<PickedFile[]>
 
   // Set up the response handler and build the picker
   return new Promise<PickedFile[]>((resolve, reject) => {
+    let pickerInstance: PickerInstance | null = null;
+    let settled = false;
+
+    /**
+     * Tears down the picker: hides it, disposes if available,
+     * removes leftover DOM chrome, and guards against double-dispose.
+     */
+    function teardown(): void {
+      if (!pickerInstance) {
+        return;
+      }
+
+      const instance = pickerInstance;
+      pickerInstance = null; // Guard against double-dispose
+
+      // Hide the picker dialog
+      instance.setVisible(false);
+
+      // Dispose the picker if the method is available
+      if (instance.dispose) {
+        instance.dispose();
+      }
+
+      // Remove leftover Picker chrome from DOM (the backdrop/container)
+      if (typeof document !== 'undefined') {
+        const pickerBackdrop = document.querySelector?.('.goog-te-spinner');
+        if (pickerBackdrop) {
+          pickerBackdrop.remove();
+        }
+
+        // Also remove the main picker modal container if present
+        const pickerModal = document.querySelector?.('[role="dialog"][aria-label*="Pick"]');
+        if (pickerModal) {
+          pickerModal.remove();
+        }
+
+        // Remove any picker-related iframes
+        const pickerIframes = document.querySelectorAll?.('iframe[src*="picker"]');
+        if (pickerIframes) {
+          pickerIframes.forEach((iframe) => iframe.remove());
+        }
+      }
+    }
+
     pickerBuilder.setCallback((data: PickerResponse) => {
+      // Prevent double-settling if callback fires multiple times
+      if (settled) {
+        return;
+      }
+
       // User picked files
       if (data.action === window.google!.picker!.Action.PICKED && data.docs) {
+        settled = true;
+        teardown();
+
         const picked = data.docs.map((doc) => ({
           fileId: doc.id,
           name: doc.name,
@@ -237,11 +303,14 @@ export async function openPicker(opts: OpenPickerOptions): Promise<PickedFile[]>
 
       // User cancelled
       if (data.action === window.google!.picker!.Action.CANCEL) {
+        settled = true;
+        teardown();
         reject(new PickerCancelledError());
         return;
       }
     });
 
-    pickerBuilder.build().setVisible(true);
+    pickerInstance = pickerBuilder.build();
+    pickerInstance.setVisible(true);
   });
 }

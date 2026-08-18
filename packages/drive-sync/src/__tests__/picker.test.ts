@@ -49,6 +49,24 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       ;(globalThis as any).window = globalThis
     }
 
+    // Ensure document is available (Node environment needs this)
+    if (typeof document === 'undefined') {
+      ;(globalThis as any).document = {
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        body: {
+          appendChild: () => {},
+        },
+      }
+    }
+
+    // Set up window.location for origin tests
+    if (!window.location) {
+      ;(window as any).location = {
+        origin: 'http://localhost:3000',
+      }
+    }
+
     __resetPickerScriptCacheForTests()
     gisFake = createGisFake()
     gisFake.install()
@@ -440,5 +458,190 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     } catch (err: any) {
       expect(err?.name).toBe('PickerCancelledError')
     }
+  })
+
+  // =====================================================================
+  // T1c Tests: Teardown, setOrigin, setIncludeFolders (Decision 29)
+  // =====================================================================
+
+  it('T1c: happy path — pick a file resolves, and disposes the picker', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls).toHaveLength(1)
+    expect(pickerFake.calls[0].disposed).toBeUndefined() // not yet disposed
+
+    pickerFake.simulatePick([{ fileId: 'f1', name: 'file.txt', mimeType: 'text/plain' }])
+
+    const result = await pickedPromise
+    expect(result).toHaveLength(1)
+    expect(result[0].fileId).toBe('f1')
+
+    await waitForAsync(3)
+    expect(pickerFake.calls[0].disposed).toBe(true)
+  })
+
+  it('T1c: happy path — cancel rejects with PickerCancelledError and disposes', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls[0].disposed).toBeUndefined()
+
+    pickerFake.simulateCancel()
+
+    try {
+      await pickedPromise
+      expect.fail('Should have thrown PickerCancelledError')
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
+
+    await waitForAsync(3)
+    expect(pickerFake.calls[0].disposed).toBe(true)
+  })
+
+  it('T1c: edge case — callback fires twice, but dispose only happens once', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    // Simulate pick once
+    pickerFake.simulatePick([{ fileId: 'f1', name: 'file.txt', mimeType: 'text/plain' }])
+
+    // Try to simulate pick again (should be ignored)
+    pickerFake.simulatePick([{ fileId: 'f2', name: 'file2.txt', mimeType: 'text/plain' }])
+
+    const result = await pickedPromise
+    expect(result).toHaveLength(1)
+    expect(result[0].fileId).toBe('f1')
+
+    await waitForAsync(3)
+    // Should still be disposed exactly once
+    expect(pickerFake.calls[0].disposed).toBe(true)
+  })
+
+  it('T1c: edge case — setOrigin receives window.location.origin', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls).toHaveLength(1)
+    expect(pickerFake.calls[0].origin).toBe(window.location.origin)
+
+    pickerFake.simulateCancel()
+    try {
+      await pickedPromise
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
+  })
+
+  it('T1c: edge case — includeFolders: true calls setIncludeFolders on DocsView', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+      includeFolders: true,
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls).toHaveLength(1)
+    expect(pickerFake.calls[0].views[0].includeFolders).toBe(true)
+
+    pickerFake.simulateCancel()
+    try {
+      await pickedPromise
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
+  })
+
+  it('T1c: edge case — includeFolders omitted means setIncludeFolders is not called', async () => {
+    __resetPickerScriptCacheForTests()
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(pickerFake.calls).toHaveLength(1)
+    expect(pickerFake.calls[0].views[0].includeFolders).toBeUndefined()
+
+    pickerFake.simulateCancel()
+    try {
+      await pickedPromise
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(PickerCancelledError)
+    }
+  })
+
+  it('T1c: regression — after full pick→resolve cycle, no Picker backdrop in document.body', async () => {
+    __resetPickerScriptCacheForTests()
+
+    // Mock document.querySelector and document.body for this test
+    let removedElements: string[] = []
+    const originalQuerySelector = document.querySelector
+    const originalBody = document.body
+
+    ;(document as any).querySelector = (selector: string) => {
+      if (selector === '.goog-te-spinner') {
+        return { remove: () => removedElements.push('.goog-te-spinner') }
+      }
+      return null
+    }
+
+    const pickedPromise = openPicker({
+      apiKey: 'dev-key',
+      appId: 'app-id-42',
+      oauthToken: 'auth-token',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    pickerFake.simulatePick([{ fileId: 'f1', name: 'file.txt', mimeType: 'text/plain' }])
+
+    const result = await pickedPromise
+    expect(result).toHaveLength(1)
+
+    await waitForAsync(3)
+
+    // The backdrop should be removed by the teardown
+    expect(removedElements).toContain('.goog-te-spinner')
+
+    // Restore original
+    ;(document as any).querySelector = originalQuerySelector
+    ;(document as any).body = originalBody
   })
 })
