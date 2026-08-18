@@ -480,9 +480,13 @@ describe('syncDocuments - document sync engine', () => {
 
       expect(result[0].success).toBe(true);
 
-      // Assert write received the Uint8Array
+      // Assert write received a Blob (converted from Uint8Array)
       const writeCall = files.write.mock.calls[0][0];
-      expect(writeCall.content).toEqual(payload);
+      expect(writeCall.content).toBeInstanceOf(Blob);
+
+      // Verify the Blob contains the correct bytes
+      const blobBytes = new Uint8Array(await (writeCall.content as Blob).arrayBuffer());
+      expect(blobBytes).toEqual(payload);
     });
   });
 
@@ -682,6 +686,50 @@ describe('syncDocuments - document sync engine', () => {
       expect(updateCall[0]).toBe('doc-1');
       expect(updateCall[1]).toBe('file-123');
       expect(updateCall[2]).toEqual(conflicts);
+    });
+
+    it('Blob remote content is converted to Uint8Array for merge', async () => {
+      const localPayload = new Uint8Array([0x01, 0x02]);
+      const remoteBytes = new Uint8Array([0x03, 0x04, 0x05]);
+      const remoteBlob = new Blob([remoteBytes], { type: 'application/octet-stream' });
+
+      const doc = createTestDocument();
+      syncState.getFileId.mockReturnValue('file-123');
+      doc.readLocal = vi.fn(async () => localPayload);
+
+      // First write throws RemoteChangedError
+      files.write.mockRejectedValueOnce(
+        new RemoteChangedError({
+          fileId: 'file-123',
+          baseVersion: 'v1',
+          remoteVersion: 'v2',
+          reason: 'remote-changed',
+        })
+      );
+
+      // Remote is a Blob (binary file)
+      files.read.mockResolvedValueOnce(remoteBlob);
+
+      // Merge should receive the converted Uint8Array
+      doc.merge.mockResolvedValueOnce({ merged: remoteBytes, conflicts: [] });
+      files.write.mockResolvedValueOnce({ id: 'file-123', name: 'test-doc.json' });
+
+      const result = await syncDocuments({
+        project,
+        projectFolderId: 'folder-123',
+        documents: () => [doc],
+        files: files as any,
+        syncState: syncState as any,
+        logger,
+      });
+
+      expect(result[0].success).toBe(true);
+
+      // Verify merge was called with the Blob converted to Uint8Array
+      const mergeCall = doc.merge.mock.calls[0];
+      expect(mergeCall[0]).toEqual(localPayload); // local
+      expect(mergeCall[1]).toBeInstanceOf(Uint8Array); // remote (converted from Blob)
+      expect(mergeCall[1]).toEqual(remoteBytes); // correct bytes
     });
   });
 });

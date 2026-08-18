@@ -116,9 +116,9 @@ export function describeMergeContract(
         expect(result.merged).toEqual(disjointPayload);
       });
 
-      it('both null → returns null', async () => {
+      it('both null → returns empty string', async () => {
         const result = await merge(null, null);
-        expect(result.merged).toEqual(null);
+        expect(result.merged).toEqual('');
       });
     });
 

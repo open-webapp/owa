@@ -21,7 +21,7 @@ function createCorrectMerge() {
   return async (local: Payload | null, remote: Payload | null) => {
     // Handle null cases
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote ?? '', conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -50,7 +50,7 @@ function createCorrectMerge() {
 function createBrokenMergeThatDropsRemote() {
   return async (local: Payload | null, remote: Payload | null) => {
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote ?? '', conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -70,7 +70,7 @@ function createBrokenMergeNonIdempotent() {
 
   return async (local: Payload | null, remote: Payload | null) => {
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote ?? '', conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -104,7 +104,7 @@ function createBrokenMergeNonIdempotent() {
 function createBrokenMergeLosesConflicts() {
   return async (local: Payload | null, remote: Payload | null) => {
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote ?? '', conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -290,8 +290,8 @@ describe('contract test suites', () => {
       // Broken document: always reads null
       const doc = {
         readLocal: async () => null,
-        writeLocal: async () => {
-          // Silently ignore writes
+        writeLocal: async (payload: Payload) => {
+          // Intentionally doesn't write; payload dropped
         },
       };
 
@@ -332,7 +332,7 @@ describe('contract test suites', () => {
       // Broken document: converts Uint8Array to string
       const doc = {
         readLocal: async () => null,
-        writeLocal: async () => {},
+        writeLocal: async (payload: Payload) => {},
       };
 
       // In a real test, this would fail because the contract expects

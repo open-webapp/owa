@@ -94,7 +94,7 @@ export class DataStore {
       try {
         db = await openDB(dbName, config.version, {
           upgrade: async (db, oldVersion, newVersion, tx) => {
-            await config.upgrade(db, oldVersion, newVersion, tx);
+            await config.upgrade(db, oldVersion!, newVersion!, tx);
           },
           blocked: () => {
             // Log but don't throw — another tab may have the db open

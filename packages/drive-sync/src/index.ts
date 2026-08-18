@@ -13,6 +13,7 @@ import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
 export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile } from './types.js';
+export type { Logger } from './logger.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';

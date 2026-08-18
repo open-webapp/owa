@@ -20,6 +20,7 @@
 import type { FilesHandle, Logger, RemoteChangedError as DriveRemoteChangedError } from '@open-webapp/drive-sync';
 import { RemoteChangedError, NotFoundError } from '@open-webapp/drive-sync';
 import type { Project, SyncDocument, Payload } from './types.js';
+import { normalizeToDrive, normalizeFromDrive } from './payloadConvert.js';
 
 /**
  * Result of syncing a single document.
@@ -214,10 +215,13 @@ async function syncDocument(
             contentLength: content?.length ?? 0,
           });
 
+          // Convert Payload to drive-sync format (string | Blob)
+          const driveContent = normalizeToDrive(content, doc.mimeType);
+
           const ref = await files.write({
             folderId: projectFolderId,
             name: doc.name,
-            content: content ?? '',
+            content: driveContent,
             mimeType: doc.mimeType,
             // Deliberately NO fileId: this is a new file
           });
@@ -245,9 +249,12 @@ async function syncDocument(
           contentLength: content?.length ?? 0,
         });
 
+        // Convert Payload to drive-sync format (string | Blob)
+        const driveContent = normalizeToDrive(content, doc.mimeType);
+
         await files.write({
           fileId,
-          content: content ?? '',
+          content: driveContent,
           mimeType: doc.mimeType,
           // Deliberately NO folderId/name: we have the fileId from step 1
         });
@@ -317,17 +324,38 @@ async function syncDocument(
 
         readAttempts++;
         result.readAttempts = readAttempts;
+
+        // fileId must be a string at this point (resolved or created in previous iterations)
+        if (!fileId) {
+          throw new Error(`fileId is required for reading remote content`);
+        }
+
         const remote = await files.read(fileId);
+
+        // Handle both string and Blob cases for remote content (type narrowing)
+        let remoteLength: number;
+        if (typeof remote === 'string') {
+          remoteLength = remote.length;
+        } else if (remote instanceof Blob) {
+          remoteLength = remote.size;
+        } else if (remote instanceof Uint8Array) {
+          remoteLength = remote.length;
+        } else {
+          // Fallback for other types
+          remoteLength = 0;
+        }
 
         logger?.log?.('debug', `Merging remote content for document "${docKey}"`, {
           fileId,
           attempt,
-          remoteLength: remote?.length ?? 0,
+          remoteLength,
         });
 
         // Merge: rebuild from fresh read, never accumulate (decision 22)
         const local = await doc.readLocal();
-        const { merged, conflicts } = await doc.merge(local, remote);
+        // Convert drive-sync format (string | Blob) to Payload format (string | Uint8Array)
+        const remotePayload = await normalizeFromDrive(remote, doc.mimeType);
+        const { merged, conflicts } = await doc.merge(local, remotePayload);
 
         if (conflicts && conflicts.length > 0) {
           result.conflicts = conflicts;

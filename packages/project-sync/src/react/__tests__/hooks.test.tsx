@@ -15,9 +15,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
+import React, { act } from 'react';
 import type { ProjectSync, Project, SyncStatus } from '../../types.js';
-import { ProjectSyncProvider, useProjects, useActiveProject, useSyncStatus } from '../index';
+import { ProjectSyncProvider, useProjects, useActiveProject, useSyncStatus } from '../index.js';
 
 /**
  * Mock ProjectSync for testing.
@@ -129,7 +129,7 @@ function ProjectsComponent(): React.ReactElement {
       <div data-testid="project-count">{projects.length}</div>
       <div data-testid="render-count">{renderCount.current}</div>
       <ul data-testid="projects-list">
-        {projects.map((p) => (
+        {projects.map((p: Project) => (
           <li key={p.id} data-testid={`project-${p.id}`}>
             {p.name}
           </li>
@@ -217,13 +217,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
       expect(screen.getByTestId('sync-last-synced')).toHaveTextContent('null');
       expect(screen.getByTestId('render-count-status')).toHaveTextContent('1');
 
-      // Change status
-      mockProjectSync.setStatus({
-        phase: 'syncing',
-        lastSyncedAt: 1000,
-        error: null,
-        needsReauth: false,
-        conflicts: [],
+      // Change status wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'syncing',
+          lastSyncedAt: 1000,
+          error: null,
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       // Should re-render
@@ -242,13 +245,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       const initialRenderCount = screen.getByTestId('render-count-status').textContent;
 
-      // Change status
-      mockProjectSync.setStatus({
-        phase: 'syncing',
-        lastSyncedAt: 1000,
-        error: null,
-        needsReauth: false,
-        conflicts: [],
+      // Change status wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'syncing',
+          lastSyncedAt: 1000,
+          error: null,
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -267,12 +273,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       const testError = new Error('Test sync error');
 
-      mockProjectSync.setStatus({
-        phase: 'error',
-        lastSyncedAt: null,
-        error: testError,
-        needsReauth: false,
-        conflicts: [],
+      // Set status with error wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'error',
+          lastSyncedAt: null,
+          error: testError,
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -290,12 +300,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       expect(screen.getByTestId('sync-needs-reauth')).toHaveTextContent('false');
 
-      mockProjectSync.setStatus({
-        phase: 'error',
-        lastSyncedAt: null,
-        error: new Error('Reauth needed'),
-        needsReauth: true,
-        conflicts: [],
+      // Set status with needsReauth wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'error',
+          lastSyncedAt: null,
+          error: new Error('Reauth needed'),
+          needsReauth: true,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -319,8 +333,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
       // Initial: no projects
       expect(screen.getByTestId('project-count')).toHaveTextContent('0');
 
-      // Create a project
-      await mockProjectSync.projects.create('Test Project');
+      // Create a project wrapped in act() to prevent React warnings
+      // when project creation triggers subscription callbacks that update state
+      await act(async () => {
+        await mockProjectSync.projects.create('Test Project');
+      });
 
       // Should update
       await waitFor(() => {
@@ -345,8 +362,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       expect(screen.getByText('Original Name')).toBeInTheDocument();
 
-      // Rename project
-      await mockProjectSync.projects.rename(project.id, 'New Name');
+      // Rename project wrapped in act() to prevent React warnings
+      // when project rename triggers subscription callbacks that update state
+      await act(async () => {
+        await mockProjectSync.projects.rename(project.id, 'New Name');
+      });
 
       // Should update
       await waitFor(() => {
@@ -366,8 +386,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       expect(screen.getByTestId('project-count')).toHaveTextContent('1');
 
-      // Remove project
-      await mockProjectSync.projects.remove(project.id);
+      // Remove project wrapped in act() to prevent React warnings
+      // when project removal triggers subscription callbacks that update state
+      await act(async () => {
+        await mockProjectSync.projects.remove(project.id);
+      });
 
       // Should update
       await waitFor(() => {
@@ -387,8 +410,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
       // Initially no active project
       expect(screen.getByTestId('active-project-name')).toHaveTextContent('none');
 
-      // Set active
-      await mockProjectSync.projects.setActive(project.id);
+      // Set active project wrapped in act() to prevent React warnings
+      // when setActive triggers subscription callbacks that update state
+      await act(async () => {
+        await mockProjectSync.projects.setActive(project.id);
+      });
 
       // Should update
       await waitFor(() => {
@@ -408,8 +434,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       expect(screen.getByTestId('active-project-name')).toHaveTextContent('Active Project');
 
-      // Remove the active project
-      await mockProjectSync.projects.remove(project.id);
+      // Remove the active project wrapped in act() to prevent React warnings
+      // when project removal triggers subscription callbacks that update state
+      await act(async () => {
+        await mockProjectSync.projects.remove(project.id);
+      });
 
       // Should clear active project
       await waitFor(() => {
@@ -482,13 +511,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       const renderCount1 = screen.getByTestId('render-count-status').textContent;
 
-      // Set a status with an error
-      mockProjectSync.setStatus({
-        phase: 'idle',
-        lastSyncedAt: null,
-        error: new Error('Error 1'),
-        needsReauth: false,
-        conflicts: [],
+      // Set a status with an error wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'idle',
+          lastSyncedAt: null,
+          error: new Error('Error 1'),
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -497,13 +529,15 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       const renderCount2 = screen.getByTestId('render-count-status').textContent;
 
-      // Change error but keep phase same
-      mockProjectSync.setStatus({
-        phase: 'idle',
-        lastSyncedAt: null,
-        error: new Error('Error 2'),
-        needsReauth: false,
-        conflicts: [],
+      // Change error but keep phase same, wrapped in act()
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'idle',
+          lastSyncedAt: null,
+          error: new Error('Error 2'),
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -527,13 +561,16 @@ describe('React Hooks (useSyncExternalStore)', () => {
 
       const renderCount1 = parseInt(screen.getByTestId('render-count').textContent || '0', 10);
 
-      // Change sync status but not projects
-      mockProjectSync.setStatus({
-        phase: 'syncing',
-        lastSyncedAt: null,
-        error: null,
-        needsReauth: false,
-        conflicts: [],
+      // Change sync status but not projects, wrapped in act() to prevent React warnings
+      // when subscription callbacks trigger state updates
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'syncing',
+          lastSyncedAt: null,
+          error: null,
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -622,25 +659,32 @@ describe('React Hooks (useSyncExternalStore)', () => {
       expect(screen.getByTestId('active-name')).toHaveTextContent('none');
       expect(screen.getByTestId('phase')).toHaveTextContent('idle');
 
-      // Create project
-      const project = await mockProjectSync.projects.create('Test');
+      // Create project wrapped in act() to prevent React warnings
+      // when project creation triggers subscription callbacks
+      const project = await act(async () => {
+        return await mockProjectSync.projects.create('Test');
+      });
       await waitFor(() => {
         expect(screen.getByTestId('projects-count')).toHaveTextContent('1');
       });
 
-      // Set active
-      await mockProjectSync.projects.setActive(project.id);
+      // Set active project wrapped in act()
+      await act(async () => {
+        await mockProjectSync.projects.setActive(project.id);
+      });
       await waitFor(() => {
         expect(screen.getByTestId('active-name')).toHaveTextContent('Test');
       });
 
-      // Change status
-      mockProjectSync.setStatus({
-        phase: 'syncing',
-        lastSyncedAt: null,
-        error: null,
-        needsReauth: false,
-        conflicts: [],
+      // Change status wrapped in act()
+      await act(async () => {
+        mockProjectSync.setStatus({
+          phase: 'syncing',
+          lastSyncedAt: null,
+          error: null,
+          needsReauth: false,
+          conflicts: [],
+        });
       });
 
       await waitFor(() => {
@@ -669,7 +713,11 @@ describe('React Hooks (useSyncExternalStore)', () => {
       expect(screen.getByTestId('comp1-count')).toHaveTextContent('0');
       expect(screen.getByTestId('comp2-count')).toHaveTextContent('0');
 
-      await mockProjectSync.projects.create('Shared Project');
+      // Create project wrapped in act() to prevent React warnings
+      // when project creation triggers subscription callbacks that update multiple components
+      await act(async () => {
+        await mockProjectSync.projects.create('Shared Project');
+      });
 
       await waitFor(() => {
         expect(screen.getByTestId('comp1-count')).toHaveTextContent('1');
