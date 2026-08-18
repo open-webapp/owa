@@ -85,6 +85,9 @@ export class DataStore {
       throw new Error('Config must have version (number) and upgrade (function)');
     }
 
+    // TypeScript narrowing: version is definitely a number after above check
+    const version = config.version as number;
+
     // Get or open the database for this project
     let handle = this.handleCache.get(projectId);
     if (!handle) {
@@ -92,7 +95,7 @@ export class DataStore {
       const dbName = deriveDbName(projectId);
       let db: IDBPDatabase<any> | null = null;
       try {
-        db = await openDB(dbName, config.version, {
+        db = await openDB(dbName, version, {
           upgrade: async (db, oldVersion, newVersion, tx) => {
             await config.upgrade(db, oldVersion, newVersion, tx);
           },

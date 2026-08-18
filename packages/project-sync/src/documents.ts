@@ -17,9 +17,25 @@
  * Payloads stay opaque end to end (string | Uint8Array).
  */
 
-import type { FilesHandle, Logger, RemoteChangedError as DriveRemoteChangedError } from '@open-webapp/drive-sync';
+import type { FilesHandle, RemoteChangedError as DriveRemoteChangedError } from '@open-webapp/drive-sync';
 import { RemoteChangedError, NotFoundError } from '@open-webapp/drive-sync';
 import type { Project, SyncDocument, Payload } from './types.js';
+
+type Logger = {
+  log(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: unknown): void;
+};
+
+function payloadToBlob(payload: Payload | null): string | Blob {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+  return new Blob([payload], { type: 'application/octet-stream' });
+}
+
+async function blobToPayload(data: string | Blob | null): Promise<Payload | null> {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  return new Uint8Array(await data.arrayBuffer());
+}
 
 /**
  * Result of syncing a single document.
@@ -115,14 +131,14 @@ async function resolveFileId(
 ): Promise<string | null> {
   // Use cached ID directly (decision 24)
   if (cachedFileId) {
-    logger?.log?.('debug', `Using cached fileId for document "${docKey}"`, {
+    logger?.log('debug', `Using cached fileId for document "${docKey}"`, {
       fileId: cachedFileId,
     });
     return cachedFileId;
   }
 
   // Unknown ID — try to find it by name (self-heal)
-  logger?.log?.('debug', `No cached fileId for document "${docKey}", attempting name lookup`, {
+  logger?.log('debug', `No cached fileId for document "${docKey}", attempting name lookup`, {
     name: doc.name,
   });
 
@@ -135,7 +151,7 @@ async function resolveFileId(
     if (found.length > 0) {
       // Use the first match (should be unique by name in the project folder)
       const fileId = found[0].id;
-      logger?.log?.(
+      logger?.log(
         'debug',
         `Self-healed fileId for document "${docKey}" via name lookup`,
         { fileId, name: doc.name }
@@ -144,14 +160,14 @@ async function resolveFileId(
     }
   } catch (err) {
     // List failed — log and fall through to creation
-    logger?.log?.('warn', `Failed to list files for document "${docKey}": ${err}`, {
+    logger?.log('warn', `Failed to list files for document "${docKey}": ${err}`, {
       docKey,
       name: doc.name,
     });
   }
 
   // Not found by name — will create in write loop
-  logger?.log?.('debug', `File not found for document "${docKey}", will create on first write`, {
+  logger?.log('debug', `File not found for document "${docKey}", will create on first write`, {
     name: doc.name,
   });
   return null;
@@ -209,7 +225,7 @@ async function syncDocument(
       try {
         // If fileId is null, this is the first write and we need to create the file
         if (!fileId) {
-          logger?.log?.('debug', `Creating file for document "${docKey}" on first write`, {
+          logger?.log('debug', `Creating file for document "${docKey}" on first write`, {
             name: doc.name,
             contentLength: content?.length ?? 0,
           });
@@ -217,7 +233,7 @@ async function syncDocument(
           const ref = await files.write({
             folderId: projectFolderId,
             name: doc.name,
-            content: content ?? '',
+            content: payloadToBlob(content),
             mimeType: doc.mimeType,
             // Deliberately NO fileId: this is a new file
           });
@@ -225,7 +241,7 @@ async function syncDocument(
           fileId = ref.id;
           result.driveFileId = fileId;
 
-          logger?.log?.('debug', `Created file for document "${docKey}"`, {
+          logger?.log('debug', `Created file for document "${docKey}"`, {
             fileId,
             name: ref.name,
           });
@@ -240,20 +256,20 @@ async function syncDocument(
 
         // fileId exists — attempt write
         result.driveFileId = fileId;
-        logger?.log?.('debug', `Syncing document "${docKey}" (attempt ${attempt}/${MAX_ATTEMPTS})`, {
+        logger?.log('debug', `Syncing document "${docKey}" (attempt ${attempt}/${MAX_ATTEMPTS})`, {
           fileId,
           contentLength: content?.length ?? 0,
         });
 
         await files.write({
           fileId,
-          content: content ?? '',
+          content: payloadToBlob(content),
           mimeType: doc.mimeType,
           // Deliberately NO folderId/name: we have the fileId from step 1
         });
 
         // Success! Pure push complete
-        logger?.log?.(
+        logger?.log(
           'debug',
           `Successfully synced document "${docKey}" (pure push, attempt ${attempt})`,
           {
@@ -273,7 +289,7 @@ async function syncDocument(
         // Check if this is a RemoteChangedError
         if (!(err instanceof RemoteChangedError)) {
           // Non-RemoteChangedError: rethrow immediately (decision 21)
-          logger?.log?.(
+          logger?.log(
             'error',
             `Failed to sync document "${docKey}" with non-retryable error: ${err}`,
             { docKey, attempt, fileId }
@@ -285,7 +301,7 @@ async function syncDocument(
         const remoteErr = err as DriveRemoteChangedError;
         if (attempt === MAX_ATTEMPTS) {
           // Attempt 3: exhausted
-          logger?.log?.(
+          logger?.log(
             'error',
             `Sync conflict exhausted for document "${docKey}" after ${MAX_ATTEMPTS} attempts`,
             {
@@ -298,7 +314,7 @@ async function syncDocument(
         }
 
         // Log the conflict reason distinguishably
-        logger?.log?.(
+        logger?.log(
           'debug',
           `Conflict detected for document "${docKey}": ${remoteErr.reason === 'never-restored' ? 'first sync against pre-existing file' : 'remote content changed'}`,
           {
@@ -310,16 +326,17 @@ async function syncDocument(
         );
 
         // Read remote, merge, writeLocal, retry
-        logger?.log?.('debug', `Reading remote content for document "${docKey}"`, {
+        logger?.log('debug', `Reading remote content for document "${docKey}"`, {
           fileId,
           attempt,
         });
 
         readAttempts++;
         result.readAttempts = readAttempts;
-        const remote = await files.read(fileId);
+        const remoteBlob = await files.read(fileId);
+        const remote = await blobToPayload(remoteBlob);
 
-        logger?.log?.('debug', `Merging remote content for document "${docKey}"`, {
+        logger?.log('debug', `Merging remote content for document "${docKey}"`, {
           fileId,
           attempt,
           remoteLength: remote?.length ?? 0,
@@ -331,7 +348,7 @@ async function syncDocument(
 
         if (conflicts && conflicts.length > 0) {
           result.conflicts = conflicts;
-          logger?.log?.('debug', `Merge produced conflicts for document "${docKey}"`, {
+          logger?.log('debug', `Merge produced conflicts for document "${docKey}"`, {
             docKey,
             conflictCount: conflicts.length,
           });
@@ -341,7 +358,7 @@ async function syncDocument(
         }
 
         // Write merged back locally
-        logger?.log?.('debug', `Writing merged content locally for document "${docKey}"`, {
+        logger?.log('debug', `Writing merged content locally for document "${docKey}"`, {
           docKey,
           attempt,
         });
@@ -354,7 +371,7 @@ async function syncDocument(
         // The next iteration will attempt the write with the merged content
 
         // Loop back to retry the write
-        logger?.log?.('debug', `Retrying write for document "${docKey}"`, {
+        logger?.log('debug', `Retrying write for document "${docKey}"`, {
           docKey,
           fileId,
           attempt,
@@ -368,7 +385,7 @@ async function syncDocument(
   } catch (error) {
     result.error = error instanceof Error ? error : new Error(String(error));
     result.readAttempts = readAttempts;
-    logger?.log?.('error', `Sync failed for document "${docKey}": ${result.error.message}`, {
+    logger?.log('error', `Sync failed for document "${docKey}": ${result.error.message}`, {
       docKey,
       error: result.error,
     });
@@ -387,14 +404,14 @@ async function syncDocument(
 export async function syncDocuments(opts: SyncDocumentsOptions): Promise<SyncDocumentResult[]> {
   const { project, projectFolderId, documents, files, syncState, logger } = opts;
 
-  logger?.log?.('debug', `Starting sync for project "${project.name}"`, {
+  logger?.log('debug', `Starting sync for project "${project.name}"`, {
     projectId: project.id,
     projectFolderId,
   });
 
   // Get the current set of documents (dynamic, per decision 9)
   const docs = documents(project);
-  logger?.log?.(
+  logger?.log(
     'debug',
     `Found ${docs.length} document(s) to sync in project "${project.name}"`,
     { projectId: project.id }
@@ -416,7 +433,7 @@ export async function syncDocuments(opts: SyncDocumentsOptions): Promise<SyncDoc
       results.push(result);
     } catch (err) {
       // This shouldn't happen as syncDocument handles errors, but be defensive
-      logger?.log?.(
+      logger?.log(
         'error',
         `Unexpected error syncing document "${docKey}": ${err}`,
         { docKey }
@@ -433,7 +450,7 @@ export async function syncDocuments(opts: SyncDocumentsOptions): Promise<SyncDoc
   }
 
   const successCount = results.filter((r) => r.success).length;
-  logger?.log?.('debug', `Sync completed for project "${project.name}"`, {
+  logger?.log('debug', `Sync completed for project "${project.name}"`, {
     projectId: project.id,
     totalDocuments: results.length,
     successful: successCount,
