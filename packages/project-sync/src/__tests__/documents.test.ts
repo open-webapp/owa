@@ -480,9 +480,11 @@ describe('syncDocuments - document sync engine', () => {
 
       expect(result[0].success).toBe(true);
 
-      // Assert write received the Uint8Array
+      // Assert write received a Blob with the Uint8Array content
       const writeCall = files.write.mock.calls[0][0];
-      expect(writeCall.content).toEqual(payload);
+      expect(writeCall.content).toBeInstanceOf(Blob);
+      const bytes = new Uint8Array(await (writeCall.content as Blob).arrayBuffer());
+      expect(bytes).toEqual(payload);
     });
   });
 
