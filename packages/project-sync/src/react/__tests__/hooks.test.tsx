@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { ProjectSync, Project, SyncStatus } from '../../types.js';
-import { ProjectSyncProvider, useProjects, useActiveProject, useSyncStatus } from '../index';
+import { ProjectSyncProvider, useProjects, useActiveProject, useSyncStatus } from '../index.js';
 
 /**
  * Mock ProjectSync for testing.
@@ -129,7 +129,7 @@ function ProjectsComponent(): React.ReactElement {
       <div data-testid="project-count">{projects.length}</div>
       <div data-testid="render-count">{renderCount.current}</div>
       <ul data-testid="projects-list">
-        {projects.map((p) => (
+        {projects.map((p: Project) => (
           <li key={p.id} data-testid={`project-${p.id}`}>
             {p.name}
           </li>

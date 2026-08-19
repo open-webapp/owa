@@ -20,8 +20,11 @@ import type { MergeFixtures } from '../contracts.js';
 function createCorrectMerge() {
   return async (local: Payload | null, remote: Payload | null) => {
     // Handle null cases
+    if (local === null && remote === null) {
+      return { merged: '[]', conflicts: [] };
+    }
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote!, conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -49,8 +52,11 @@ function createCorrectMerge() {
  */
 function createBrokenMergeThatDropsRemote() {
   return async (local: Payload | null, remote: Payload | null) => {
+    if (local === null && remote === null) {
+      return { merged: '[]', conflicts: [] };
+    }
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote!, conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -69,8 +75,11 @@ function createBrokenMergeNonIdempotent() {
   let callCount = 0;
 
   return async (local: Payload | null, remote: Payload | null) => {
+    if (local === null && remote === null) {
+      return { merged: '[]', conflicts: [] };
+    }
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote!, conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };
@@ -103,8 +112,11 @@ function createBrokenMergeNonIdempotent() {
  */
 function createBrokenMergeLosesConflicts() {
   return async (local: Payload | null, remote: Payload | null) => {
+    if (local === null && remote === null) {
+      return { merged: '[]', conflicts: [] };
+    }
     if (local === null) {
-      return { merged: remote, conflicts: [] };
+      return { merged: remote!, conflicts: [] };
     }
     if (remote === null) {
       return { merged: local, conflicts: [] };

@@ -18,8 +18,11 @@
  * deterministically, every call.
  */
 
-import type { Logger } from '@open-webapp/drive-sync';
 import type { Project } from './types.js';
+
+type Logger = {
+  log(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: unknown): void;
+};
 
 /**
  * Folder operations interface for dependency injection in tests.
@@ -277,7 +280,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
     const verified = await verifyFolderById(project.driveFolderId, folderOps, opts);
     if (verified) {
       folderId = verified.id;
-      opts.logger?.log?.('debug', `Verified cached folder ID for project "${projectName}"`, {
+      opts.logger?.log('debug', `Verified cached folder ID for project "${projectName}"`, {
         folderId,
       });
 
@@ -297,7 +300,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
       // Drive and we should use the new one. If not found, the app renamed the
       // project and we should rename the cached folder.
 
-      opts.logger?.log?.(
+      opts.logger?.log(
         'debug',
         `Cached folder name "${verified.name}" doesn't match project name "${projectName}"`
       );
@@ -319,7 +322,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
       verificationMemo.set(memoKey, { folderId, verifiedAt: Date.now() });
       return folderId;
     }
-    opts.logger?.log?.('debug', `Cached folder ID invalid or missing for project "${projectName}"`);
+    opts.logger?.log('debug', `Cached folder ID invalid or missing for project "${projectName}"`);
   }
 
   // Step 3: Look up folder by name under ['OpenWebApp', appName, projectName]
@@ -330,7 +333,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
   if (!openWebAppFolder) {
     // Create 'OpenWebApp' folder at root
     parentId = await createFolder('OpenWebApp', undefined, folderOps, opts);
-    opts.logger?.log?.('debug', `Created 'OpenWebApp' folder`, { folderId: parentId });
+    opts.logger?.log('debug', `Created 'OpenWebApp' folder`, { folderId: parentId });
   } else {
     parentId = openWebAppFolder.id;
   }
@@ -339,7 +342,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
   const appFolder = await lookupFolderByName(parentId, opts.appName, folderOps, opts);
   if (!appFolder) {
     parentId = await createFolder(opts.appName, parentId, folderOps, opts);
-    opts.logger?.log?.('debug', `Created app folder "${opts.appName}"`, { folderId: parentId });
+    opts.logger?.log('debug', `Created app folder "${opts.appName}"`, { folderId: parentId });
   } else {
     parentId = appFolder.id;
   }
@@ -349,7 +352,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
   if (!projectFolder) {
     // Step 4: Create if not found
     folderId = await createFolder(projectName, parentId, folderOps, opts);
-    opts.logger?.log?.('debug', `Created project folder "${projectName}"`, { folderId });
+    opts.logger?.log('debug', `Created project folder "${projectName}"`, { folderId });
   } else {
     folderId = projectFolder.id;
   }
@@ -363,7 +366,7 @@ export async function resolveProjectFolder(opts: ResolveFolderOptions): Promise<
 
     // Memoize the verification result
     verificationMemo.set(memoKey, { folderId, verifiedAt: Date.now() });
-    opts.logger?.log?.('debug', `Resolved folder for project "${projectName}"`, {
+    opts.logger?.log('debug', `Resolved folder for project "${projectName}"`, {
       folderId,
     });
   }

@@ -28,6 +28,11 @@ type Logger = {
 function payloadToBlob(payload: Payload | null): string | Blob {
   if (!payload) return '';
   if (typeof payload === 'string') return payload;
+  // Ensure we have a regular ArrayBuffer (not SharedArrayBuffer)
+  const buffer = payload instanceof Uint8Array ? payload.buffer : payload;
+  if (buffer instanceof SharedArrayBuffer) {
+    return new Blob([new Uint8Array(buffer)], { type: 'application/octet-stream' });
+  }
   return new Blob([payload], { type: 'application/octet-stream' });
 }
 
@@ -333,6 +338,8 @@ async function syncDocument(
 
         readAttempts++;
         result.readAttempts = readAttempts;
+        // fileId must be set at this point (conflict implies we already wrote)
+        if (!fileId) throw new Error('fileId missing during conflict recovery');
         const remoteBlob = await files.read(fileId);
         const remote = await blobToPayload(remoteBlob);
 
