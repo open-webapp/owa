@@ -93,6 +93,7 @@ export class DataStore {
 
     // Type-safe config after validation
     const validConfig: DataStoreConfig = config;
+    const version: number = validConfig.version!;
 
     // Get or open the database for this project
     let handle = this.handleCache.get(projectId);
@@ -101,9 +102,9 @@ export class DataStore {
       const dbName = deriveDbName(projectId);
       let db: IDBPDatabase<any> | null = null;
       try {
-        db = await openDB(dbName, validConfig.version, {
+        db = await openDB(dbName, version, {
           upgrade: async (db, oldVersion, newVersion, tx) => {
-            await validConfig.upgrade(db, oldVersion, newVersion, tx);
+            await (validConfig.upgrade as any)(db, oldVersion, newVersion, tx);
           },
           blocked: () => {
             // Log but don't throw — another tab may have the db open

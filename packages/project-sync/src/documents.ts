@@ -35,12 +35,11 @@ function payloadToBlob(payload: Payload | null): string | Blob {
       // Copy SharedArrayBuffer to regular ArrayBuffer
       const copy = new Uint8Array(buffer.byteLength);
       copy.set(new Uint8Array(buffer));
-      return new Blob([copy], { type: 'application/octet-stream' });
+      return new Blob([copy as BlobPart], { type: 'application/octet-stream' });
     }
-    // Safe to use directly
-    return new Blob([payload], { type: 'application/octet-stream' });
   }
-  return new Blob([payload], { type: 'application/octet-stream' });
+  // Safe to use directly (including regular Uint8Array)
+  return new Blob([payload as BlobPart], { type: 'application/octet-stream' });
 }
 
 async function blobToPayload(data: string | Blob | null): Promise<Payload | null> {
