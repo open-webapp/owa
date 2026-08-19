@@ -19,6 +19,7 @@ export type {
   SyncDocumentFrom,
 } from './types.js';
 
+export { createProjectSync } from './factory.js';
 export { ProjectRegistry } from './registry.js';
 export { DataStore, type DataStoreConfig } from './dataStore.js';
 export { MigrationsManager } from './migrations.js';

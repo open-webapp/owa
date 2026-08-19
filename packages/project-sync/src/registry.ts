@@ -193,6 +193,14 @@ export class ProjectRegistry {
   }
 
   /**
+   * Get the underlying database instance for internal use.
+   * For use by package-internal modules like SyncStateManager.
+   */
+  getDb(): IDBPDatabase<any> {
+    return this.ensureDb();
+  }
+
+  /**
    * Close the database connection.
    */
   close(): void {
