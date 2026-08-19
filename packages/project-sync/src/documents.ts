@@ -28,10 +28,17 @@ type Logger = {
 function payloadToBlob(payload: Payload | null): string | Blob {
   if (!payload) return '';
   if (typeof payload === 'string') return payload;
-  // Ensure we have a regular ArrayBuffer (not SharedArrayBuffer)
-  const buffer = payload instanceof Uint8Array ? payload.buffer : payload;
-  if (buffer instanceof SharedArrayBuffer) {
-    return new Blob([new Uint8Array(buffer)], { type: 'application/octet-stream' });
+  // Handle Uint8Array - may have SharedArrayBuffer, so copy if needed
+  if (payload instanceof Uint8Array) {
+    const buffer = payload.buffer;
+    if (buffer instanceof SharedArrayBuffer) {
+      // Copy SharedArrayBuffer to regular ArrayBuffer
+      const copy = new Uint8Array(buffer.byteLength);
+      copy.set(new Uint8Array(buffer));
+      return new Blob([copy], { type: 'application/octet-stream' });
+    }
+    // Safe to use directly
+    return new Blob([payload], { type: 'application/octet-stream' });
   }
   return new Blob([payload], { type: 'application/octet-stream' });
 }
@@ -244,6 +251,7 @@ async function syncDocument(
           });
 
           fileId = ref.id;
+          if (!fileId) throw new Error(`Failed to get fileId from created file`);
           result.driveFileId = fileId;
 
           logger?.log('debug', `Created file for document "${docKey}"`, {

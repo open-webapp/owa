@@ -81,12 +81,18 @@ export class DataStore {
       throw new Error('Project id must be a non-empty string');
     }
 
-    if (!config || typeof config.upgrade !== 'function' || typeof config.version !== 'number') {
-      throw new Error('Config must have version (number) and upgrade (function)');
+    if (!config) {
+      throw new Error('Config is required');
+    }
+    if (typeof config.upgrade !== 'function') {
+      throw new Error('Config.upgrade must be a function');
+    }
+    if (typeof config.version !== 'number') {
+      throw new Error('Config.version must be a number');
     }
 
-    // TypeScript narrowing: version is definitely a number after above check
-    const version = config.version as number;
+    // Type-safe config after validation
+    const validConfig: DataStoreConfig = config;
 
     // Get or open the database for this project
     let handle = this.handleCache.get(projectId);
@@ -95,9 +101,9 @@ export class DataStore {
       const dbName = deriveDbName(projectId);
       let db: IDBPDatabase<any> | null = null;
       try {
-        db = await openDB(dbName, version, {
+        db = await openDB(dbName, validConfig.version, {
           upgrade: async (db, oldVersion, newVersion, tx) => {
-            await config.upgrade(db, oldVersion, newVersion, tx);
+            await validConfig.upgrade(db, oldVersion, newVersion, tx);
           },
           blocked: () => {
             // Log but don't throw — another tab may have the db open

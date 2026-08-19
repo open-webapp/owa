@@ -302,7 +302,7 @@ describe('contract test suites', () => {
       // Broken document: always reads null
       const doc = {
         readLocal: async () => null,
-        writeLocal: async () => {
+        writeLocal: async (payload: Payload) => {
           // Silently ignore writes
         },
       };
