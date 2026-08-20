@@ -285,6 +285,11 @@ describe('getAccessToken', () => {
   it('rejects rather than hanging when the user closes the sign-in popup', async () => {
     const { appId, projectId } = freshIds()
     gisFake.queuePopupError('popup_closed')
+    // A popup_closed report is no longer taken as proof of cancellation: the
+    // token path follows it with one prompt:'none' probe for a grant the user
+    // may have completed. A user who really cancelled leaves no grant, so the
+    // probe must fail here for this to be a genuine-cancellation scenario.
+    gisFake.queueResponse({ error: 'interaction_required' })
 
     const settled = await Promise.race([
       connect({ appId, projectId, clientId: 'client-1', scopes: SCOPES, fetchEmail: vi.fn() }).then(

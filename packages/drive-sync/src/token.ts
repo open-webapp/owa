@@ -57,6 +57,10 @@ interface GisWindow {
  * 300ms proved too tight in production: on a real network round-trip the
  * success token can arrive well after GIS's popup-closed poll fires,
  * causing genuinely successful sign-ins to be reported as NeedsReauthError.
+ *
+ * The grace window alone is NOT sufficient: in the field there are completed
+ * sign-ins where the success `callback` never arrives at all, so no window is
+ * long enough. `probeForCompletedGrant` below is what actually recovers those.
  */
 const POPUP_CLOSED_GRACE_MS = 2000;
 
@@ -170,27 +174,78 @@ export async function acquireToken(opts: AcquireTokenOptions): Promise<StoredTok
   }
 }
 
-async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<StoredToken> {
-  await waitForGoogleIdentityServices(opts.logger);
+function isPopupClosedError(err: unknown): boolean {
+  return err instanceof NeedsReauthError && err.reason === 'popup_closed';
+}
 
-  const w = globalThis as unknown as GisWindow;
-  const initTokenClient = w.google?.accounts?.oauth2?.initTokenClient;
-  if (!initTokenClient) {
-    // waitForGoogleIdentityServices resolved, so this should not happen in
-    // practice; guard anyway rather than throwing an obscure TypeError.
-    throw new NeedsReauthError('Google Identity Services is unavailable');
+/**
+ * Issues ONE `prompt: 'none'` request to find out whether the sign-in that
+ * GIS reported as `popup_closed` actually completed. Resolves with the token
+ * response when a live grant is found; otherwise rethrows `popupClosedError`
+ * — the original interactive failure — so callers see the cancellation they
+ * would have seen before, never a confusing silent-path error.
+ */
+async function probeForCompletedGrant(
+  initTokenClient: (config: GisTokenClientConfig) => GisTokenClient,
+  opts: AcquireTokenOptions,
+  popupClosedError: unknown
+): Promise<GisTokenResponse> {
+  opts.logger?.debug('drive-sync: popup_closed with no token; probing for a completed grant', {
+    projectId: opts.projectId,
+  });
+
+  try {
+    // No grace window: `prompt: 'none'` never opens a popup, so there is no
+    // popup-closed poll to race and nothing to wait out on failure.
+    const response = await requestGisToken(
+      initTokenClient,
+      opts,
+      { prompt: 'none', hint: opts.hint },
+      0
+    );
+    opts.logger?.debug('drive-sync: recovered a completed sign-in reported as popup_closed', {
+      projectId: opts.projectId,
+    });
+    return response;
+  } catch (probeError: unknown) {
+    opts.logger?.debug('drive-sync: no live grant after popup_closed; treating as cancelled', {
+      projectId: opts.projectId,
+      probeError,
+    });
+    throw popupClosedError;
   }
+}
 
-  const response = await new Promise<GisTokenResponse>((resolve, reject) => {
-    // These resolve/reject are captured in THIS call's closure only, never
-    // stored on a module-level variable, so a second concurrent call cannot
-    // clobber the first caller's promise.
+/**
+ * Wraps a single GIS token request in a promise.
+ *
+ * Every call creates a FRESH `initTokenClient`, and the resolve/reject pair is
+ * captured in THIS call's closure only — never on a module-level variable — so
+ * a second concurrent call cannot clobber the first caller's promise.
+ */
+function requestGisToken(
+  initTokenClient: (config: GisTokenClientConfig) => GisTokenClient,
+  opts: AcquireTokenOptions,
+  override: GisRequestAccessTokenOverride,
+  popupClosedGraceMs: number = POPUP_CLOSED_GRACE_MS
+): Promise<GisTokenResponse> {
+  return new Promise<GisTokenResponse>((resolve, reject) => {
     let settled = false;
     const client = initTokenClient({
       client_id: opts.clientId,
       scope: opts.scopes.join(' '),
       callback: (res: GisTokenResponse) => {
-        if (settled) return;
+        if (settled) {
+          // Diagnostic only: a token arriving after we gave up is the exact
+          // signature of a grace window that was too short, and is worth
+          // distinguishing from one that never arrived at all.
+          opts.logger?.debug('drive-sync: GIS token callback arrived after settle', {
+            projectId: opts.projectId,
+            prompt: override.prompt,
+            hadError: Boolean(res.error),
+          });
+          return;
+        }
         settled = true;
         if (res.error) {
           reject(new Error(`GIS token request failed: ${res.error}`));
@@ -203,6 +258,13 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
       // the promise below would stay pending forever and every awaiting
       // Drive call would hang until the caller's own timeout (if any).
       error_callback: (err: GisErrorResponse) => {
+        opts.logger?.debug('drive-sync: GIS error_callback', {
+          projectId: opts.projectId,
+          prompt: override.prompt,
+          type: err?.type,
+          message: err?.message,
+          settled,
+        });
         if (settled) return;
         if (err?.type === 'popup_closed') {
           // GIS closes the popup itself at the end of a SUCCESSFUL flow too,
@@ -219,7 +281,7 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
                 reason: 'popup_closed',
               })
             );
-          }, POPUP_CLOSED_GRACE_MS);
+          }, popupClosedGraceMs);
           return;
         }
         settled = true;
@@ -237,18 +299,46 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
     opts.logger?.debug('drive-sync: requesting access token', {
       projectId: opts.projectId,
       interactive: opts.interactive,
+      prompt: override.prompt,
     });
 
-    client.requestAccessToken({
+    client.requestAccessToken(override);
+  });
+}
+
+async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<StoredToken> {
+  await waitForGoogleIdentityServices(opts.logger);
+
+  const w = globalThis as unknown as GisWindow;
+  const initTokenClient = w.google?.accounts?.oauth2?.initTokenClient;
+  if (!initTokenClient) {
+    // waitForGoogleIdentityServices resolved, so this should not happen in
+    // practice; guard anyway rather than throwing an obscure TypeError.
+    throw new NeedsReauthError('Google Identity Services is unavailable');
+  }
+
+  let response: GisTokenResponse;
+  try {
+    response = await requestGisToken(initTokenClient, opts, {
       prompt: opts.interactive ? 'consent' : 'none',
       hint: !opts.interactive ? opts.hint : undefined,
     });
-  }).catch((err: unknown) => {
+  } catch (err: unknown) {
     if (!opts.interactive) {
       throw new NeedsReauthError('Silent token acquisition failed', { reason: 'gis_error' });
     }
-    throw err;
-  });
+    if (!isPopupClosedError(err)) {
+      throw err;
+    }
+    // GIS said the popup closed and never delivered a token, but that is NOT
+    // proof the user cancelled: a completed consent whose success message is
+    // never posted back to this page looks identical from here. The two cases
+    // ARE distinguishable at Google, though — a completed consent leaves a
+    // live grant behind, so a `prompt: 'none'` request now succeeds with no
+    // popup at all. Probe for it; a cancelled sign-in leaves no grant and the
+    // probe fails, in which case we surface the original popup_closed error.
+    response = await probeForCompletedGrant(initTokenClient, opts, err);
+  }
 
   const token = await persistTokenResponse(opts.appId, opts.projectId, response);
 
