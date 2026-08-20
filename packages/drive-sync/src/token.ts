@@ -52,6 +52,12 @@ interface GisWindow {
 }
 
 /**
+ * How long to wait, after GIS reports `popup_closed`, for the success
+ * `callback` to still win the race before treating it as a real failure.
+ */
+const POPUP_CLOSED_GRACE_MS = 300;
+
+/**
  * Persists a freshly-acquired GIS token response as a StoredToken, deriving
  * expiresAt from the response's own expires_in (never hardcoded) and
  * grantedScopes from the response's space-delimited scope string.
@@ -176,10 +182,13 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
     // These resolve/reject are captured in THIS call's closure only, never
     // stored on a module-level variable, so a second concurrent call cannot
     // clobber the first caller's promise.
+    let settled = false;
     const client = initTokenClient({
       client_id: opts.clientId,
       scope: opts.scopes.join(' '),
       callback: (res: GisTokenResponse) => {
+        if (settled) return;
+        settled = true;
         if (res.error) {
           reject(new Error(`GIS token request failed: ${res.error}`));
           return;
@@ -191,13 +200,31 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
       // the promise below would stay pending forever and every awaiting
       // Drive call would hang until the caller's own timeout (if any).
       error_callback: (err: GisErrorResponse) => {
+        if (settled) return;
+        if (err?.type === 'popup_closed') {
+          // GIS closes the popup itself at the end of a SUCCESSFUL flow too,
+          // and its popup-closed poll can win the race against delivery of
+          // the success token, firing this error_callback even though the
+          // token is already on its way via `callback`. Give `callback` a
+          // brief grace window to settle the promise first, so a completed
+          // OAuth flow doesn't get reported as a failed one.
+          setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(
+              new NeedsReauthError('Google sign-in popup was closed before completing', {
+                reason: 'popup_closed',
+              })
+            );
+          }, POPUP_CLOSED_GRACE_MS);
+          return;
+        }
+        settled = true;
         reject(
           new NeedsReauthError(
             err?.type === 'popup_failed_to_open'
               ? 'Google sign-in popup was blocked by the browser'
-              : err?.type === 'popup_closed'
-                ? 'Google sign-in popup was closed before completing'
-                : `Google sign-in failed: ${err?.type ?? 'unknown error'}`,
+              : `Google sign-in failed: ${err?.type ?? 'unknown error'}`,
             { reason: err?.type ?? 'gis_error' }
           )
         );

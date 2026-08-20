@@ -59,6 +59,12 @@ export interface GisFake {
    * for a blocked or dismissed popup, which never reaches `callback`.
    */
   queuePopupError(type: string): void
+  /**
+   * Queue a `popup_closed` error_callback that is followed, after `delayMs`,
+   * by a successful token `callback` — reproducing the real GIS race where
+   * the popup-closed poll fires before the success message is delivered.
+   */
+  queuePopupClosedRace(response: GisTokenResponse, delayMs: number): void
   /** Stub `window.google.accounts.oauth2.initTokenClient` with this fake. */
   install(): void
   /** Remove the stub installed by `install()`, restoring prior state. */
@@ -67,9 +73,15 @@ export interface GisFake {
   reset(): void
 }
 
+interface PopupClosedRace {
+  response: GisTokenResponse
+  delayMs: number
+}
+
 export function createGisFake(): GisFake {
   const responseQueue: GisTokenResponse[] = []
   const popupErrorQueue: (string | undefined)[] = []
+  const popupClosedRaceQueue: PopupClosedRace[] = []
   const calls: GisRecordedCall[] = []
   let previousGoogle: unknown
   let hadGoogle = false
@@ -89,6 +101,19 @@ export function createGisFake(): GisFake {
         const scope = overrideConfig?.scope ?? config.scope ?? ''
 
         calls.push({ prompt, hint, scope })
+
+        const popupClosedRace = popupClosedRaceQueue.shift()
+        if (popupClosedRace) {
+          const errorCallback = config.error_callback
+          const callback = config.callback
+          queueMicrotask(() => {
+            errorCallback?.({ type: 'popup_closed' })
+          })
+          setTimeout(() => {
+            callback?.(popupClosedRace.response)
+          }, popupClosedRace.delayMs)
+          return
+        }
 
         const popupError = popupErrorQueue.shift()
         if (popupError) {
@@ -126,6 +151,9 @@ export function createGisFake(): GisFake {
     queuePopupError(type: string) {
       popupErrorQueue.push(type)
     },
+    queuePopupClosedRace(response: GisTokenResponse, delayMs: number) {
+      popupClosedRaceQueue.push({ response, delayMs })
+    },
     install() {
       const w = globalThis as unknown as { google?: any }
       hadGoogle = Object.prototype.hasOwnProperty.call(w, 'google')
@@ -153,6 +181,7 @@ export function createGisFake(): GisFake {
     reset() {
       responseQueue.length = 0
       popupErrorQueue.length = 0
+      popupClosedRaceQueue.length = 0
       calls.length = 0
     },
   }

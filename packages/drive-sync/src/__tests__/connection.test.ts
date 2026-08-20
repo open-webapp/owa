@@ -298,4 +298,24 @@ describe('getAccessToken', () => {
     expect(settled).toBeInstanceOf(NeedsReauthError)
     expect((settled as NeedsReauthError).reason).toBe('popup_closed')
   })
+
+  it('succeeds when the success callback wins a race against a popup_closed report at the end of a completed flow', async () => {
+    // Reproduces the real GIS quirk: it closes the popup itself once the
+    // user finishes consenting, and its popup-closed poll can fire
+    // error_callback before the success token message is delivered — even
+    // though the flow actually succeeded. connect() must not surface a
+    // NeedsReauthError for a flow that completes just after the race.
+    const { appId, projectId } = freshIds()
+    gisFake.queuePopupClosedRace(
+      { access_token: 'tok-race', expires_in: 3600, scope: SCOPES.join(' ') },
+      50
+    )
+    const fetchEmail = vi.fn().mockResolvedValue('race@example.com')
+
+    const connected = await connect({ appId, projectId, clientId: 'client-1', scopes: SCOPES, fetchEmail })
+
+    expect(connected.email).toBe('race@example.com')
+    expect(connected.needsReauth).toBe(false)
+    expect(fetchEmail).toHaveBeenCalledWith('tok-race')
+  })
 })
