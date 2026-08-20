@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>drive-sync OAuth tester</title>
+</head>
+<body>
+  <h1>drive-sync OAuth tester</h1>
+  <button id="connect-btn">Connect</button>
+  <button id="disconnect-btn">Disconnect</button>
+  <button id="pick-btn" disabled>Pick File</button>
+  <div id="status">
+    <p>State: <span id="state">unknown</span></p>
+    <p>Email: <span id="email">-</span></p>
+    <p>Expires: <span id="expires">-</span></p>
+  </div>
+  <ul id="picked-files"></ul>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
