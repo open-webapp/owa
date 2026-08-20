@@ -291,7 +291,7 @@ describe('getAccessToken', () => {
         () => 'resolved' as const,
         (e: unknown) => e
       ),
-      new Promise((r) => setTimeout(() => r('HUNG'), 1000)),
+      new Promise((r) => setTimeout(() => r('HUNG'), 3000)),
     ])
 
     expect(settled).not.toBe('HUNG')
@@ -317,5 +317,25 @@ describe('getAccessToken', () => {
     expect(connected.email).toBe('race@example.com')
     expect(connected.needsReauth).toBe(false)
     expect(fetchEmail).toHaveBeenCalledWith('tok-race')
+  })
+
+  it('succeeds even when the success token is delayed well past a too-short grace window (real-world latency)', async () => {
+    // Production reports showed genuinely successful sign-ins still being
+    // reported as NeedsReauthError: on a real network round-trip the success
+    // token can take much longer than a few hundred ms to arrive after GIS's
+    // popup-closed poll fires. This uses an 800ms delay, which exceeds the
+    // grace window this suite previously shipped with (300ms).
+    const { appId, projectId } = freshIds()
+    gisFake.queuePopupClosedRace(
+      { access_token: 'tok-slow-race', expires_in: 3600, scope: SCOPES.join(' ') },
+      800
+    )
+    const fetchEmail = vi.fn().mockResolvedValue('slow-race@example.com')
+
+    const connected = await connect({ appId, projectId, clientId: 'client-1', scopes: SCOPES, fetchEmail })
+
+    expect(connected.email).toBe('slow-race@example.com')
+    expect(connected.needsReauth).toBe(false)
+    expect(fetchEmail).toHaveBeenCalledWith('tok-slow-race')
   })
 })

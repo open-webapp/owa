@@ -54,8 +54,11 @@ interface GisWindow {
 /**
  * How long to wait, after GIS reports `popup_closed`, for the success
  * `callback` to still win the race before treating it as a real failure.
+ * 300ms proved too tight in production: on a real network round-trip the
+ * success token can arrive well after GIS's popup-closed poll fires,
+ * causing genuinely successful sign-ins to be reported as NeedsReauthError.
  */
-const POPUP_CLOSED_GRACE_MS = 300;
+const POPUP_CLOSED_GRACE_MS = 2000;
 
 /**
  * Persists a freshly-acquired GIS token response as a StoredToken, deriving
