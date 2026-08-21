@@ -314,7 +314,11 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
         });
         const results: PickedFile[] = [];
         for (const p of picked) {
-          const content = await filesImpl.read({ ...base, fileId: p.fileId, interactive: true });
+          // Not interactive: the token above was already acquired
+          // interactively moments ago for the Picker itself and is now
+          // cached, so each file read reuses it (or silently refreshes)
+          // instead of forcing its own consent prompt per file.
+          const content = await filesImpl.read({ ...base, fileId: p.fileId, interactive: false });
           results.push({ fileId: p.fileId, name: p.name, mimeType: p.mimeType, content });
         }
         return results;

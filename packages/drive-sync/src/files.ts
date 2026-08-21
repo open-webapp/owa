@@ -2,7 +2,7 @@ import type { Logger } from './logger.js';
 import type { FileRef, FileState } from './types.js';
 import { driveFetch } from './http.js';
 import { escapeQ } from './query.js';
-import { NotFoundError, RemoteChangedError } from './errors.js';
+import { NotFoundError, NotDownloadableError, RemoteChangedError } from './errors.js';
 import { getFileState, setFileState, clearFileState } from './storage.js';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
@@ -77,7 +77,9 @@ async function recordBaseline(
  * since Drive 404s both for a genuinely wrong id and for a file the
  * connected account cannot see — this ambiguity is documented in the public
  * API and callers are expected to treat `null` as "not available" rather
- * than distinguishing the two cases.
+ * than distinguishing the two cases. Also returns `null` for a native Google
+ * Workspace file (Docs/Sheets/Slides/...), since those only support Export,
+ * not the raw `alt=media` download this function issues.
  */
 export async function read(opts: ReadOptions): Promise<string | Blob | null> {
   try {
@@ -117,7 +119,7 @@ export async function read(opts: ReadOptions): Promise<string | Blob | null> {
 
     return content;
   } catch (err) {
-    if (err instanceof NotFoundError) {
+    if (err instanceof NotFoundError || err instanceof NotDownloadableError) {
       return null;
     }
     throw err;

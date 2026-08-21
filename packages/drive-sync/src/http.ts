@@ -8,6 +8,7 @@ import {
   NeedsReauthError,
   ScopeInsufficientError,
   NotFoundError,
+  NotDownloadableError,
   RateLimitedError,
   TransientError,
   WrongAccountError,
@@ -241,6 +242,12 @@ async function performFetch(
         status: 403,
         reason: lastBodyText,
       });
+    }
+    if (lastBodyText.includes('fileNotDownloadable')) {
+      // No fileId is reliably available at this layer (see the 404 case
+      // below) — files.ts re-catches this and returns null instead of
+      // rethrowing with the concrete fileId, so the empty default is fine.
+      throw new NotDownloadableError('', { status: 403, reason: lastBodyText });
     }
     throw new DriveSyncError(`Drive request forbidden (403): ${lastBodyText}`, {
       status: 403,

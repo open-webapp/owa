@@ -83,6 +83,21 @@ export class NotFoundError extends DriveSyncError {
   }
 }
 
+/**
+ * Thrown when Drive refuses to serve a file's raw bytes via `alt=media`
+ * because it isn't binary content (e.g. a native Google Docs/Sheets/Slides
+ * file, which only supports Export, not Download).
+ */
+export class NotDownloadableError extends DriveSyncError {
+  fileId: string;
+
+  constructor(fileId: string, opts?: DriveSyncErrorOptions) {
+    super(`File not downloadable as raw content: ${fileId}`, { status: 403, ...opts });
+    this.name = 'NotDownloadableError';
+    this.fileId = fileId;
+  }
+}
+
 export interface RateLimitedErrorOptions extends DriveSyncErrorOptions {
   retryAfter?: number;
 }
