@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/project-sync",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "repository": {
     "type": "git",
