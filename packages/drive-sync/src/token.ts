@@ -75,6 +75,27 @@ const POPUP_CLOSED_GRACE_MS = 2000;
 const PROBE_ATTEMPTS = 3;
 const PROBE_RETRY_DELAY_MS = 350;
 
+/**
+ * Hard ceiling on a single GIS token request.
+ *
+ * GIS settles a request ONLY by invoking `callback` or `error_callback`, and
+ * in the field it sometimes does neither: a completed flow whose result is
+ * never posted back to this page (most reliably a silent `prompt: 'none'`
+ * request in a browser that blocks silent token issuance) leaves both
+ * callbacks unfired. Without a ceiling that request stays pending forever —
+ * `connect()` never settles, the host app is stuck mid-connect with no error
+ * to show, and the in-flight entry in `inFlight` is never released, so every
+ * later retry joins the same dead promise and no popup ever opens again.
+ *
+ * Interactive requests get a generous ceiling because the user is legitimately
+ * typing a password inside the popup; silent requests have no UI and must
+ * either answer quickly or be treated as failed.
+ */
+const INTERACTIVE_REQUEST_TIMEOUT_MS = 5 * 60_000;
+const SILENT_REQUEST_TIMEOUT_MS = 10_000;
+/** Probes run up to PROBE_ATTEMPTS times, so each one has to fail fast. */
+const PROBE_REQUEST_TIMEOUT_MS = 4_000;
+
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -108,12 +129,19 @@ export interface AcquireTokenOptions {
 }
 
 /**
- * Key used for in-flight coalescing: per (projectId, sorted-scope-set), NOT
- * global. This is what keeps concurrent calls for different projects (or
- * different scope requirements within the same project) from colliding.
+ * Key used for in-flight coalescing: per (projectId, sorted-scope-set,
+ * interactive), NOT global. This is what keeps concurrent calls for different
+ * projects (or different scope requirements within the same project) from
+ * colliding.
+ *
+ * `interactive` is part of the key because the two modes are not
+ * interchangeable: a user-initiated `connect()` must run its own OAuth flow,
+ * and must never be handed the outcome of a silent background refresh that
+ * happens to be in flight — that resolves (or rejects) the user's click with
+ * no flow shown at all, which is indistinguishable from a dead button.
  */
-function coalesceKey(projectId: string, scopes: string[]): string {
-  return `${projectId}|${scopes.slice().sort().join(' ')}`;
+function coalesceKey(projectId: string, scopes: string[], interactive: boolean): string {
+  return `${projectId}|${interactive ? 'i' : 's'}|${scopes.slice().sort().join(' ')}`;
 }
 
 const inFlight = new Map<string, Promise<StoredToken>>();
@@ -173,7 +201,7 @@ export async function acquireToken(opts: AcquireTokenOptions): Promise<StoredTok
     }
   }
 
-  const key = coalesceKey(opts.projectId, opts.scopes);
+  const key = coalesceKey(opts.projectId, opts.scopes, opts.interactive);
   const existing = inFlight.get(key);
   if (existing) {
     return existing;
@@ -223,7 +251,8 @@ async function probeForCompletedGrant(
         initTokenClient,
         opts,
         { prompt: 'none', hint: opts.hint },
-        0
+        0,
+        PROBE_REQUEST_TIMEOUT_MS
       );
       opts.logger?.debug('drive-sync: recovered a completed sign-in reported as popup_closed', {
         projectId: opts.projectId,
@@ -256,10 +285,39 @@ function requestGisToken(
   initTokenClient: (config: GisTokenClientConfig) => GisTokenClient,
   opts: AcquireTokenOptions,
   override: GisRequestAccessTokenOverride,
-  popupClosedGraceMs: number = POPUP_CLOSED_GRACE_MS
+  popupClosedGraceMs: number = POPUP_CLOSED_GRACE_MS,
+  timeoutMs: number = INTERACTIVE_REQUEST_TIMEOUT_MS
 ): Promise<GisTokenResponse> {
   return new Promise<GisTokenResponse>((resolve, reject) => {
     let settled = false;
+
+    // Neither GIS callback is guaranteed to fire; see the timeout constants.
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      opts.logger?.warn('drive-sync: GIS never returned a result; timing out the request', {
+        projectId: opts.projectId,
+        prompt: override.prompt,
+        timeoutMs,
+      });
+      reject(
+        new NeedsReauthError('Google sign-in did not return a result', {
+          reason: 'gis_timeout',
+        })
+      );
+    }, timeoutMs);
+
+    const succeed = (res: GisTokenResponse) => {
+      settled = true;
+      clearTimeout(timeout);
+      resolve(res);
+    };
+    const fail = (err: Error) => {
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
+    };
+
     const client = initTokenClient({
       client_id: opts.clientId,
       scope: opts.scopes.join(' '),
@@ -275,12 +333,11 @@ function requestGisToken(
           });
           return;
         }
-        settled = true;
         if (res.error) {
-          reject(new Error(`GIS token request failed: ${res.error}`));
+          fail(new Error(`GIS token request failed: ${res.error}`));
           return;
         }
-        resolve(res);
+        succeed(res);
       },
       // Without this, a popup that the browser blocks or the user closes
       // settles NOTHING: GIS reports those through error_callback only, so
@@ -304,8 +361,7 @@ function requestGisToken(
           // OAuth flow doesn't get reported as a failed one.
           setTimeout(() => {
             if (settled) return;
-            settled = true;
-            reject(
+            fail(
               new NeedsReauthError('Google sign-in popup was closed before completing', {
                 reason: 'popup_closed',
               })
@@ -313,8 +369,7 @@ function requestGisToken(
           }, popupClosedGraceMs);
           return;
         }
-        settled = true;
-        reject(
+        fail(
           new NeedsReauthError(
             err?.type === 'popup_failed_to_open'
               ? 'Google sign-in popup was blocked by the browser'
@@ -348,21 +403,27 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
 
   let response: GisTokenResponse;
   try {
-    response = await requestGisToken(initTokenClient, opts, {
-      // The interactive path deliberately does NOT force `prompt: 'consent'`.
-      // Forcing the full consent screen on every connect buys nothing in the
-      // implicit (token) flow — there is no refresh token to obtain — while
-      // holding a popup open for seconds. That popup lifetime IS the window
-      // in which GIS's popup-closed poll beats delivery of the token, so
-      // forcing consent manufactures the very race the probe below recovers
-      // from. `prompt: ''` lets Google skip straight through when the grant
-      // already exists (and still shows consent on the first grant, or when
-      // new scopes are requested), which closes the race instead of racing
-      // it. The hint goes on both paths so an already-known account can skip
-      // the chooser too.
-      prompt: opts.interactive ? '' : 'none',
-      hint: opts.hint,
-    });
+    response = await requestGisToken(
+      initTokenClient,
+      opts,
+      {
+        // The interactive path deliberately does NOT force `prompt: 'consent'`.
+        // Forcing the full consent screen on every connect buys nothing in the
+        // implicit (token) flow — there is no refresh token to obtain — while
+        // holding a popup open for seconds. That popup lifetime IS the window
+        // in which GIS's popup-closed poll beats delivery of the token, so
+        // forcing consent manufactures the very race the probe below recovers
+        // from. `prompt: ''` lets Google skip straight through when the grant
+        // already exists (and still shows consent on the first grant, or when
+        // new scopes are requested), which closes the race instead of racing
+        // it. The hint goes on both paths so an already-known account can skip
+        // the chooser too.
+        prompt: opts.interactive ? '' : 'none',
+        hint: opts.hint,
+      },
+      POPUP_CLOSED_GRACE_MS,
+      opts.interactive ? INTERACTIVE_REQUEST_TIMEOUT_MS : SILENT_REQUEST_TIMEOUT_MS
+    );
   } catch (err: unknown) {
     if (!opts.interactive) {
       throw new NeedsReauthError('Silent token acquisition failed', { reason: 'gis_error' });

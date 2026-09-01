@@ -65,6 +65,13 @@ export interface GisFake {
    * the popup-closed poll fires before the success message is delivered.
    */
   queuePopupClosedRace(response: GisTokenResponse, delayMs: number): void
+  /**
+   * Queue a request that GIS never answers at all: neither `callback` nor
+   * `error_callback` is ever invoked. This is the real-world shape of a flow
+   * whose result is never posted back to the page (e.g. a silent
+   * `prompt: 'none'` request in a browser that blocks silent token issuance).
+   */
+  queueSilence(): void
   /** Stub `window.google.accounts.oauth2.initTokenClient` with this fake. */
   install(): void
   /** Remove the stub installed by `install()`, restoring prior state. */
@@ -82,6 +89,7 @@ export function createGisFake(): GisFake {
   const responseQueue: GisTokenResponse[] = []
   const popupErrorQueue: (string | undefined)[] = []
   const popupClosedRaceQueue: PopupClosedRace[] = []
+  let silenceQueue = 0
   const calls: GisRecordedCall[] = []
   let previousGoogle: unknown
   let hadGoogle = false
@@ -101,6 +109,11 @@ export function createGisFake(): GisFake {
         const scope = overrideConfig?.scope ?? config.scope ?? ''
 
         calls.push({ prompt, hint, scope })
+
+        if (silenceQueue > 0) {
+          silenceQueue -= 1
+          return
+        }
 
         const popupClosedRace = popupClosedRaceQueue.shift()
         if (popupClosedRace) {
@@ -154,6 +167,9 @@ export function createGisFake(): GisFake {
     queuePopupClosedRace(response: GisTokenResponse, delayMs: number) {
       popupClosedRaceQueue.push({ response, delayMs })
     },
+    queueSilence() {
+      silenceQueue += 1
+    },
     install() {
       const w = globalThis as unknown as { google?: any }
       hadGoogle = Object.prototype.hasOwnProperty.call(w, 'google')
@@ -182,6 +198,7 @@ export function createGisFake(): GisFake {
       responseQueue.length = 0
       popupErrorQueue.length = 0
       popupClosedRaceQueue.length = 0
+      silenceQueue = 0
       calls.length = 0
     },
   }

@@ -56,10 +56,11 @@ Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHand
 
 1. **Per-request token client, not a module singleton** — `token.ts`'s `acquireToken`/`acquireTokenUncoalesced` creates a fresh `initTokenClient` on every call; nothing closes over the first call's `projectId`.
 2. **Scope honored on every call** — the fresh client is configured with `opts.scopes.join(' ')` per call, not baked in once at init.
-3. **In-flight coalescing keyed by `(projectId, sorted scopes)`** — `token.ts`'s `coalesceKey` + `inFlight` map; concurrent calls for different projects/scopes never collide.
+3. **In-flight coalescing keyed by `(projectId, sorted scopes, interactive)`** — `token.ts`'s `coalesceKey` + `inFlight` map; concurrent calls for different projects/scopes never collide, and a user-initiated `connect()` is never handed the outcome of an in-flight silent refresh (which would settle the click with no OAuth flow shown).
 4. **No clobbered resolvers** — `resolve`/`reject` are captured in each call's own `Promise` closure (`acquireTokenUncoalesced`), never stored on a module-level variable.
 5. **Real expiry** — `persistTokenResponse` reads `response.expires_in` and computes `Date.now() + expiresIn * 1000`; no hardcoded `3600`.
-6. **`grantedScopes` recorded** — `persistTokenResponse` splits `response.scope` and stores it on the token; `connection.ts`'s `connect()` also copies it onto the durable `ConnRecord`.
+6. **Every GIS request is time-bounded** — GIS settles a request only via `callback`/`error_callback`, and sometimes fires neither; `requestGisToken` rejects with `NeedsReauthError` (`reason: 'gis_timeout'`) after 5min interactive / 10s silent / 4s per recovery probe, so a request that is never answered cannot pin `inFlight` forever and kill every later retry.
+7. **`grantedScopes` recorded** — `persistTokenResponse` splits `response.scope` and stores it on the token; `connection.ts`'s `connect()` also copies it onto the durable `ConnRecord`.
 7. **401 handled** — `http.ts`'s `performFetch` clears the token, retries once non-interactively, then throws `NeedsReauthError` (see §4).
 8. **`hint` on silent refresh** — every non-interactive `acquireToken` call is given `hint: <known email>`; wrong-account tokens are caught by `refreshSilently` (see below and §4).
 9. **`response.ok` checked before parsing** — `performFetch` never calls `.json()`/`.text()` on a response without checking `res.ok` first; every status branch is explicit.
@@ -120,7 +121,7 @@ Nothing in this schema stores a Drive `folderId` or `fileId` — those stay app-
 
 ## 4. Refresh state machine
 
-Token acquisition always funnels through `token.ts`'s `acquireToken`, which is coalesced per `(projectId, sorted scopes)` and never keeps module-level mutable state across calls. Four distinct callers drive it, each representing a different "state":
+Token acquisition always funnels through `token.ts`'s `acquireToken`, which is coalesced per `(projectId, sorted scopes, interactive)` and never keeps module-level mutable state across calls. Four distinct callers drive it, each representing a different "state":
 
 ```
 [No connection]
