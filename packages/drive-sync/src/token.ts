@@ -142,9 +142,10 @@ export function notifyExternalTokenRefresh(projectId: string): void {
 
 /**
  * Single entry point for acquiring a Drive access token, used by BOTH the
- * interactive "connect" path (interactive: true -> prompt: 'consent', no
- * hint) and the silent "refresh" path (interactive: false -> prompt: 'none',
- * hint: the connection's known email).
+ * interactive "connect" path (interactive: true -> prompt: '', i.e. no
+ * forced consent screen) and the silent "refresh" path (interactive: false
+ * -> prompt: 'none'). Both pass `hint`: the connection's known email, when
+ * there is one.
  *
  * Design contract (see report): if `interactive` is false and GIS reports an
  * error on the silent attempt, this function throws a NeedsReauthError
@@ -348,8 +349,19 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
   let response: GisTokenResponse;
   try {
     response = await requestGisToken(initTokenClient, opts, {
-      prompt: opts.interactive ? 'consent' : 'none',
-      hint: !opts.interactive ? opts.hint : undefined,
+      // The interactive path deliberately does NOT force `prompt: 'consent'`.
+      // Forcing the full consent screen on every connect buys nothing in the
+      // implicit (token) flow — there is no refresh token to obtain — while
+      // holding a popup open for seconds. That popup lifetime IS the window
+      // in which GIS's popup-closed poll beats delivery of the token, so
+      // forcing consent manufactures the very race the probe below recovers
+      // from. `prompt: ''` lets Google skip straight through when the grant
+      // already exists (and still shows consent on the first grant, or when
+      // new scopes are requested), which closes the race instead of racing
+      // it. The hint goes on both paths so an already-known account can skip
+      // the chooser too.
+      prompt: opts.interactive ? '' : 'none',
+      hint: opts.hint,
     });
   } catch (err: unknown) {
     if (!opts.interactive) {

@@ -535,4 +535,43 @@ describe('drive-sync regression suite', () => {
     expect(capturedContentType).toMatch(/multipart\/(form-data|related);\s*boundary=/i)
     expect(capturedContentType).not.toContain(oldBoundary)
   })
+  it('R14 — interactive connect never forces prompt: "consent", and hints the known account', async () => {
+    // Root cause of the "popup was closed before completing" reports: the
+    // interactive path hardcoded prompt: 'consent', forcing Google's full
+    // consent screen on EVERY connect even when the grant already existed.
+    // The seconds that popup stays open are exactly the window in which
+    // GIS's popup-closed poll beats delivery of the token — so the fix is
+    // to stop manufacturing the race, not just to recover from it. In the
+    // implicit (token) flow there is no refresh token to gain, so forcing
+    // consent bought nothing to offset that cost.
+    const appId = freshId('app')
+    const projectId = freshId('proj')
+
+    gisFake.queueResponse({ access_token: 'tok-1', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    await connectDirect({
+      appId,
+      projectId,
+      clientId: 'client-1',
+      scopes: REQUIRED_SCOPES,
+      fetchEmail: vi.fn().mockResolvedValue('a@x.com'),
+    })
+
+    expect(gisFake.calls[0].prompt).toBe('')
+    expect(gisFake.calls[0].prompt).not.toBe('consent')
+
+    // A re-connect for the SAME project knows the account, so the hint rides
+    // along on the interactive request too — letting Google skip the account
+    // chooser as well and shortening the popup's life further.
+    gisFake.queueResponse({ access_token: 'tok-2', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    await connectDirect({
+      appId,
+      projectId,
+      clientId: 'client-1',
+      scopes: REQUIRED_SCOPES,
+      fetchEmail: vi.fn().mockResolvedValue('a@x.com'),
+    })
+
+    expect(gisFake.calls[1].prompt).toBe('')
+    expect(gisFake.calls[1].hint).toBe('a@x.com')
+  })
 })

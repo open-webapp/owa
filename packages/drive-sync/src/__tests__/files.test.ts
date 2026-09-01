@@ -394,14 +394,15 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
 
     await expect(project.files.read('file-1')).rejects.toBeInstanceOf(NeedsReauthError)
 
-    // The identical call, made interactive, drives a user-facing prompt
-    // (prompt: 'consent') via gisFake and succeeds.
+    // The identical call, made interactive, drives a user-facing sign-in
+    // (prompt: '' — Google shows consent only if it is actually needed)
+    // via gisFake and succeeds.
     queueToken()
     const result = await project.files.read('file-1', { interactive: true })
     expect(result).toBe('hello')
 
     const lastCall = gisFake.calls[gisFake.calls.length - 1]
-    expect(lastCall.prompt).toBe('consent')
+    expect(lastCall.prompt).toBe('')
   })
 
   // ---------------------------------------------------------------------

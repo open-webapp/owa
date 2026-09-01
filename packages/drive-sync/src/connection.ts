@@ -24,8 +24,9 @@ export interface ConnectOptions {
 }
 
 /**
- * Interactive connection flow: acquires a token with prompt: 'consent',
- * resolves the account email, and persists the durable Connection record.
+ * Interactive connection flow: acquires a token without forcing a consent
+ * screen, resolves the account email, and persists the durable Connection
+ * record.
  */
 export async function connect(opts: ConnectOptions): Promise<Connection> {
   // On a re-auth the previous connection's email is the account the user is

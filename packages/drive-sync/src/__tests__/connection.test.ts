@@ -374,7 +374,7 @@ describe('getAccessToken', () => {
     })
 
     expect(reconnected.email).toBe('known@example.com')
-    expect(gisFake.calls[0].prompt).toBe('consent')
+    expect(gisFake.calls[0].prompt).toBe('')
     expect(gisFake.calls[1].prompt).toBe('none')
     expect(gisFake.calls[1].hint).toBe('known@example.com')
   })
