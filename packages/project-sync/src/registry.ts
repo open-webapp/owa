@@ -190,6 +190,7 @@ export class ProjectRegistry {
     const db = this.ensureDb();
     // Use delete which is a no-op if the key doesn't exist
     await db.delete('projects', id);
+    await db.delete('_syncStates', id);
   }
 
   /**

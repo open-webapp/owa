@@ -135,6 +135,17 @@ describe('ProjectRegistry', () => {
       const projects = await registry.list();
       expect(projects).toHaveLength(0);
     });
+
+    it('should delete the corresponding _syncStates record', async () => {
+      const project = await registry.create('Synced Project');
+      const db = (registry as any).db;
+      await db.put('_syncStates', { projectId: project.id, lastSyncedAt: '2026-01-01T00:00:00.000Z' });
+
+      await registry.remove(project.id);
+
+      const syncState = await db.get('_syncStates', project.id);
+      expect(syncState).toBeUndefined();
+    });
   });
 
   // Happy path: rename → new name persisted
