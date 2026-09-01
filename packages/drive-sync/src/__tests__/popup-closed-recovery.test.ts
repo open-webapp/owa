@@ -61,10 +61,12 @@ describe('popup_closed recovery via a completed-grant probe', () => {
   }, 10_000)
 
   it('still reports a genuinely cancelled sign-in as popup_closed', async () => {
-    // No grant exists, so the probe fails the way GIS fails a prompt:'none'
-    // request with nothing to satisfy it. The user must see the original
-    // popup_closed error, not the probe's error.
+    // No grant exists, so every probe attempt fails the way GIS fails a
+    // prompt:'none' request with nothing to satisfy it. The user must see the
+    // original popup_closed error, not the probe's error.
     gisFake.queuePopupError('popup_closed')
+    gisFake.queueResponse({ error: 'interaction_required' })
+    gisFake.queueResponse({ error: 'interaction_required' })
     gisFake.queueResponse({ error: 'interaction_required' })
 
     const settled = await acquireToken(baseOpts()).then(
@@ -75,7 +77,30 @@ describe('popup_closed recovery via a completed-grant probe', () => {
     expect(settled).toBeInstanceOf(NeedsReauthError)
     expect((settled as NeedsReauthError).reason).toBe('popup_closed')
     expect((settled as NeedsReauthError).message).toContain('closed before completing')
-    expect(gisFake.calls.length).toBe(2)
+    // 1 interactive request + 3 silent probe attempts.
+    expect(gisFake.calls.length).toBe(4)
+  }, 10_000)
+
+  it('retries the probe when the completed grant is not yet visible on the first attempt', async () => {
+    // The race this fixes: GIS's popup-closed poll fires before the
+    // just-completed consent is durably registered at Google, so the first
+    // silent probe finds nothing. A single-attempt probe would give up here
+    // and surface a spurious popup_closed for a sign-in that succeeded.
+    gisFake.queuePopupError('popup_closed')
+    gisFake.queueResponse({ error: 'interaction_required' })
+    gisFake.queueResponse({
+      access_token: 'recovered-late-token',
+      expires_in: 3600,
+      scope: SCOPES.join(' '),
+    })
+
+    const token = await acquireToken(baseOpts({ hint: 'user@example.com' }))
+
+    expect(token.accessToken).toBe('recovered-late-token')
+    // 1 interactive request + 2 silent probe attempts (the 2nd recovers).
+    expect(gisFake.calls.length).toBe(3)
+    expect(gisFake.calls.slice(1).every((c) => c.prompt === 'none')).toBe(true)
+    expect(gisFake.calls.slice(1).every((c) => c.hint === 'user@example.com')).toBe(true)
   }, 10_000)
 
   it('does not probe on the silent path, which is already a prompt:none request', async () => {

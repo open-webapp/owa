@@ -28,12 +28,19 @@ export interface ConnectOptions {
  * resolves the account email, and persists the durable Connection record.
  */
 export async function connect(opts: ConnectOptions): Promise<Connection> {
+  // On a re-auth the previous connection's email is the account the user is
+  // expected to consent as again; pass it as a hint so the popup_closed
+  // recovery probe (token.ts) can resolve a completed grant silently even
+  // when the browser holds several Google sessions. First-time connect has
+  // no prior email and simply passes undefined.
+  const existing = await getConn(opts.appId, opts.projectId);
   const token = await acquireToken({
     appId: opts.appId,
     projectId: opts.projectId,
     clientId: opts.clientId,
     scopes: opts.scopes,
     interactive: true,
+    hint: existing?.email,
     logger: opts.logger,
   });
 
@@ -163,12 +170,16 @@ export async function getAccessToken(opts: GetAccessTokenOptions): Promise<strin
     return cached.accessToken;
   }
 
+  // Same rationale as connect(): hand the known account email to the
+  // popup_closed recovery probe so it can pick up a completed grant silently.
+  const existing = await getConn(opts.appId, opts.projectId);
   const token = await acquireToken({
     appId: opts.appId,
     projectId: opts.projectId,
     clientId: opts.clientId,
     scopes: opts.scopes,
     interactive: opts.interactive,
+    hint: existing?.email,
     logger: opts.logger,
   });
   return token.accessToken;

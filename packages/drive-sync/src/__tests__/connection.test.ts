@@ -286,9 +286,11 @@ describe('getAccessToken', () => {
     const { appId, projectId } = freshIds()
     gisFake.queuePopupError('popup_closed')
     // A popup_closed report is no longer taken as proof of cancellation: the
-    // token path follows it with one prompt:'none' probe for a grant the user
-    // may have completed. A user who really cancelled leaves no grant, so the
-    // probe must fail here for this to be a genuine-cancellation scenario.
+    // token path follows it with a few prompt:'none' probes for a grant the
+    // user may have completed. A user who really cancelled leaves no grant, so
+    // every probe attempt must fail for this to be a genuine cancellation.
+    gisFake.queueResponse({ error: 'interaction_required' })
+    gisFake.queueResponse({ error: 'interaction_required' })
     gisFake.queueResponse({ error: 'interaction_required' })
 
     const settled = await Promise.race([
@@ -342,5 +344,38 @@ describe('getAccessToken', () => {
     expect(connected.email).toBe('slow-race@example.com')
     expect(connected.needsReauth).toBe(false)
     expect(fetchEmail).toHaveBeenCalledWith('tok-slow-race')
+  })
+
+  it('feeds the stored connection email to the popup_closed recovery probe on re-auth', async () => {
+    const { appId, projectId } = freshIds()
+
+    // First connect establishes the durable Connection record.
+    gisFake.queueResponse({ access_token: 'tok-initial', expires_in: 3600, scope: SCOPES.join(' ') })
+    await connect({
+      appId,
+      projectId,
+      clientId: 'client-1',
+      scopes: SCOPES,
+      fetchEmail: vi.fn().mockResolvedValue('known@example.com'),
+    })
+    gisFake.reset()
+
+    // Re-auth: GIS reports popup_closed with no token; the silent probe must
+    // target the account we already know about.
+    gisFake.queuePopupError('popup_closed')
+    gisFake.queueResponse({ access_token: 'tok-reauth', expires_in: 3600, scope: SCOPES.join(' ') })
+
+    const reconnected = await connect({
+      appId,
+      projectId,
+      clientId: 'client-1',
+      scopes: SCOPES,
+      fetchEmail: vi.fn().mockResolvedValue('known@example.com'),
+    })
+
+    expect(reconnected.email).toBe('known@example.com')
+    expect(gisFake.calls[0].prompt).toBe('consent')
+    expect(gisFake.calls[1].prompt).toBe('none')
+    expect(gisFake.calls[1].hint).toBe('known@example.com')
   })
 })
