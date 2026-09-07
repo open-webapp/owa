@@ -16,4 +16,10 @@ git tag project-sync-v<version>
 git push origin project-sync-v<version>
 ```
 
+**For drive-connect:** After creating a commit to `packages/drive-connect`, extract the version from `packages/drive-connect/package.json` and run:
+```bash
+git tag drive-connect-v<version>
+git push origin drive-connect-v<version>
+```
+
 This automates the release process by triggering the publish workflow without manual tag creation. Each package has its own independent versioning and release lifecycle.

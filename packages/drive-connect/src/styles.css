@@ -1,0 +1,64 @@
+/**
+ * drive-connect package stylesheet.
+ *
+ * Every color / spacing / font value is written as `var(--owa-drive-<token>, <fallback>)`.
+ * Hosts define the tokens; the fallbacks here ARE the defaults. There is deliberately
+ * no `:root {}` token block. Class vocabulary is 1:1 with GoogleDriveWidget.tsx.
+ */
+
+.owa-drive-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--owa-drive-gap, 8px);
+  font: var(--owa-drive-font, inherit);
+  color: var(--owa-drive-fg, #1a1a1a);
+}
+
+.owa-drive-connect {
+  align-self: flex-start;
+  padding: var(--owa-drive-gap, 8px);
+  border: 0;
+  border-radius: var(--owa-drive-radius, 6px);
+  background: var(--owa-drive-accent, #1a73e8);
+  color: var(--owa-drive-accent-fg, #ffffff);
+  font: var(--owa-drive-font, inherit);
+  cursor: pointer;
+}
+
+.owa-drive-connect:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.owa-drive-status {
+  margin: 0;
+  color: var(--owa-drive-fg, #1a1a1a);
+  font: var(--owa-drive-font, inherit);
+}
+
+.owa-drive-email {
+  color: var(--owa-drive-fg, #1a1a1a);
+}
+
+.owa-drive-disconnect { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; color: var(--owa-drive-muted, #666); font: inherit; }
+
+.owa-drive-disconnect:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+.owa-drive-reauth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--owa-drive-gap, 8px);
+  color: var(--owa-drive-fg, #1a1a1a);
+  font: var(--owa-drive-font, inherit);
+}
+
+.owa-drive-error { color: var(--owa-drive-danger, #b00020); }
+
+.owa-drive-description {
+  color: var(--owa-drive-muted, #666);
+  font: var(--owa-drive-font, inherit);
+}
