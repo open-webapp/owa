@@ -19,11 +19,14 @@ const APP_ID = 'drive-sync-oauth-tester';
 const FOLDER_PATH = ['OAuthTester'];
 const PROJECT_ID = 'oauth-tester';
 
+const tokenExchangeUrl = import.meta.env.VITE_DRIVE_TOKEN_EXCHANGE_URL;
+
 const drive = createDriveSync({
   appId: APP_ID,
   clientId: import.meta.env.VITE_DRIVE_CLIENT_ID,
   folderPath: FOLDER_PATH,
   logger,
+  ...(tokenExchangeUrl ? { tokenExchangeUrl } : {}),
 });
 
 function renderStatus(conn: Connection | null): void {
@@ -101,9 +104,13 @@ pickBtn?.addEventListener('click', () => {
   })();
 });
 
-const _dispose = drive.activate();
-await drive.reconcile([PROJECT_ID]);
-const p = drive.project(PROJECT_ID);
+let p: ReturnType<typeof drive.project>;
 
-const conn = await p.getConnection();
-renderStatus(conn);
+void (async () => {
+  const _dispose = drive.activate();
+  await drive.reconcile([PROJECT_ID]);
+  p = drive.project(PROJECT_ID);
+
+  const conn = await p.getConnection();
+  renderStatus(conn);
+})();

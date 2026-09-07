@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase, type DBSchema } from 'idb';
-import type { StoredToken } from './types.js';
+import type { Envelope, StoredToken } from './types.js';
 
 /** Durable connection record persisted under the 'conn' key of the auth store. */
 export interface ConnRecord {
@@ -23,13 +23,14 @@ export interface FileStateRecord {
 interface AuthDbSchema extends DBSchema {
   auth: {
     key: string;
-    value: ConnRecord | StoredToken | FileStateRecord;
+    value: ConnRecord | StoredToken | Envelope | FileStateRecord;
   };
 }
 
 const AUTH_STORE = 'auth';
 const CONN_KEY = 'conn';
 const TOKEN_KEY = 'token';
+const ENVELOPE_KEY = 'envelope';
 
 /**
  * File baselines live in the existing 'auth' store under a namespaced key
@@ -143,6 +144,32 @@ export async function setToken(
 export async function clearToken(appId: string, projectId: string): Promise<void> {
   const db = await openAuthDb(appId, projectId);
   await db.delete(AUTH_STORE, TOKEN_KEY);
+}
+
+export async function getEnvelope(
+  appId: string,
+  projectId: string
+): Promise<Envelope | undefined> {
+  const db = await openAuthDb(appId, projectId);
+  const value = await db.get(AUTH_STORE, ENVELOPE_KEY);
+  return value as Envelope | undefined;
+}
+
+export async function setEnvelope(
+  appId: string,
+  projectId: string,
+  env: Envelope
+): Promise<void> {
+  const db = await openAuthDb(appId, projectId);
+  await db.put(AUTH_STORE, env, ENVELOPE_KEY);
+}
+
+export async function clearEnvelope(
+  appId: string,
+  projectId: string
+): Promise<void> {
+  const db = await openAuthDb(appId, projectId);
+  await db.delete(AUTH_STORE, ENVELOPE_KEY);
 }
 
 export async function getFileState(

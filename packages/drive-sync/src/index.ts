@@ -12,7 +12,7 @@ import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -122,7 +122,7 @@ export interface DriveSync {
  * returned object's methods are actually called.
  */
 export function createDriveSync(options: DriveSyncOptions): DriveSync {
-  const { appId, clientId, folderPath } = options;
+  const { appId, clientId, folderPath, tokenExchangeUrl } = options;
   const logger: Logger = options.logger ?? noOpLogger;
 
   /**
@@ -179,7 +179,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
 
     const runWarmUps = (): void => {
       for (const projectId of trackedProjectIds) {
-        void warmUpIfNeeded({ appId, projectId, clientId, fetchEmail, logger });
+        void warmUpIfNeeded({ appId, projectId, clientId, tokenExchangeUrl, fetchEmail, logger });
       }
     };
 
@@ -216,7 +216,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
   function project(projectId: string): ProjectHandle {
     trackProject(projectId);
 
-    const base = { appId, projectId, clientId, logger, fetchEmail };
+    const base = { appId, projectId, clientId, tokenExchangeUrl, logger, fetchEmail };
 
     const files: FilesHandle = {
       list(opts, callOpts) {
@@ -258,6 +258,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           projectId,
           clientId,
           scopes: REQUIRED_SCOPES,
+          tokenExchangeUrl,
           logger,
           fetchEmail,
         });
@@ -270,9 +271,14 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
         });
       },
       async disconnect() {
-        await disconnectImpl({
+        // `tokenExchangeUrl` is threaded via an intermediate object rather
+        // than an inline literal so this compiles while T7's
+        // `DisconnectOptions.tokenExchangeUrl?` field lands in parallel; once
+        // it has, the envelope-mode disconnect branch picks the value up.
+        const disconnectOpts = {
           appId,
           projectId,
+          tokenExchangeUrl,
           revokeFn: async (accessToken: string) => {
             try {
               await revokeToken(accessToken);
@@ -280,7 +286,8 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
               logger.warn('drive-sync: token revocation failed', { err });
             }
           },
-        });
+        };
+        await disconnectImpl(disconnectOpts);
       },
       ensureFolderPath() {
         return filesImpl.ensureFolderPath({ ...base, folderPath });
@@ -292,6 +299,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           clientId,
           scopes: REQUIRED_SCOPES,
           interactive: callOpts?.interactive ?? true,
+          tokenExchangeUrl,
           logger,
         });
       },
@@ -302,6 +310,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           clientId,
           scopes: REQUIRED_SCOPES,
           interactive: true,
+          tokenExchangeUrl,
           logger,
         });
         const picked = await pickerImpl.openPicker({

@@ -25,6 +25,14 @@ export class DriveSyncError extends Error {
 /**
  * Thrown when no usable token exists and the requested call is
  * non-interactive (so no popup/redirect flow may be triggered to obtain one).
+ *
+ * Known `reason` values:
+ *  - `popup_closed`, `gis_timeout`, `gis_error` — legacy GIS implicit flow (token.ts).
+ *  - `refresh_token_revoked` — server-mediated exchange, 410; carried by the
+ *    `EnvelopeRevokedError` subclass (envelope.ts). Caller must additionally
+ *    clear conn+token+envelope.
+ *  - `exchange_failed` — server-mediated exchange, 400/401/404; not retryable.
+ *  - `exchange_unavailable` — server-mediated exchange, still 502/5xx after retries.
  */
 export class NeedsReauthError extends DriveSyncError {
   constructor(message = 'Reauthentication required', opts?: DriveSyncErrorOptions) {

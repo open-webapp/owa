@@ -12,6 +12,12 @@ interface BaseCallOptions {
   interactive?: boolean;
   logger?: Logger;
   fetchEmail?: (accessToken: string) => Promise<string>;
+  /**
+   * Server-mediated token-exchange endpoint. Forwarded verbatim into every
+   * `driveFetch` call so envelope-mode token acquisition / 401 recovery runs
+   * through `refreshEnvelope` (see http.ts). Absent for the legacy GIS path.
+   */
+  tokenExchangeUrl?: string;
 }
 
 export interface ListPermissionsOptions extends BaseCallOptions {
@@ -31,6 +37,7 @@ export async function list(opts: ListPermissionsOptions): Promise<DrivePermissio
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   const json = (await res.json()) as { permissions?: DrivePermission[] };
   return json.permissions ?? [];
@@ -64,6 +71,7 @@ export async function grant(opts: GrantPermissionOptions): Promise<DrivePermissi
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   return (await res.json()) as DrivePermission;
 }
@@ -89,6 +97,7 @@ export async function update(opts: UpdatePermissionOptions): Promise<DrivePermis
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   return (await res.json()) as DrivePermission;
 }
@@ -111,5 +120,6 @@ export async function revoke(opts: RevokePermissionOptions): Promise<void> {
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
 }

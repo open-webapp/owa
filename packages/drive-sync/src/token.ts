@@ -169,6 +169,37 @@ export function notifyExternalTokenRefresh(projectId: string): void {
 }
 
 /**
+ * Parallel-set mirror of {@link externallyRefreshed} for the server-mediated
+ * token-exchange path (envelope.ts `refreshEnvelope`). Kept deliberately
+ * separate from the legacy set so the two flows never consume each other's
+ * cross-tab signals: a `token` broadcast that originated from an envelope
+ * refresh drains this set, and one from a legacy GIS acquisition drains the
+ * other. Populated by {@link notifyExternalEnvelopeRefresh}, drained by
+ * {@link consumeExternalEnvelopeRefresh}.
+ */
+const externallyRefreshedEnvelope = new Set<string>();
+
+/**
+ * Records that another tab just persisted a fresh envelope for `projectId`.
+ * The next {@link import('./envelope.js').refreshEnvelope} call for this
+ * project drains the signal and re-reads the stored envelope before deciding
+ * whether a network round-trip is needed.
+ */
+export function notifyExternalEnvelopeRefresh(projectId: string): void {
+  externallyRefreshedEnvelope.add(projectId);
+}
+
+/**
+ * Consume (one-shot) a pending cross-tab envelope-refresh signal for
+ * `projectId`. Returns `true` when a signal was pending (and clears it),
+ * `false` otherwise. Mirrors the inline `externallyRefreshed.delete(...)`
+ * check the legacy `acquireToken` path performs.
+ */
+export function consumeExternalEnvelopeRefresh(projectId: string): boolean {
+  return externallyRefreshedEnvelope.delete(projectId);
+}
+
+/**
  * Single entry point for acquiring a Drive access token, used by BOTH the
  * interactive "connect" path (interactive: true -> prompt: '', i.e. no
  * forced consent screen) and the silent "refresh" path (interactive: false

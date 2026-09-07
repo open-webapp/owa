@@ -48,11 +48,56 @@ export interface GisTokenClient {
   requestAccessToken(overrideConfig?: GisRequestAccessTokenOverride): void
 }
 
+/**
+ * Response delivered to an `initCodeClient` callback — the auth-code
+ * (server-side / PKCE) flow. Mirrors the shape the real GIS code client
+ * passes: `{ code }` on success, `{ error }` on an in-band failure.
+ */
+export interface GisCodeResponse {
+  code?: string
+  error?: string
+}
+
+export interface GisCodeRecordedCall {
+  scope: string
+  hint?: string
+}
+
+export interface GisCodeClientConfig {
+  client_id?: string
+  scope?: string
+  hint?: string
+  ux_mode?: string
+  redirect_uri?: string
+  callback?: (response: GisCodeResponse) => void
+  error_callback?: (error: { type?: string; message?: string }) => void
+  [key: string]: unknown
+}
+
+export interface GisCodeClient {
+  requestCode(): void
+}
+
 export interface GisFake {
   /** All calls made via `requestAccessToken`, in order. */
   calls: GisRecordedCall[]
+  /** All calls made via the code client's `requestCode`, in order. */
+  codeCalls: GisCodeRecordedCall[]
   /** Queue a response to be delivered to the next `requestAccessToken` call. */
   queueResponse(response: GisTokenResponse): void
+  /**
+   * Queue a response for the next code-client `requestCode()` call, delivered
+   * via `callback` — `{ code }` on success or `{ error }` for an in-band
+   * failure. With nothing queued, `requestCode()` yields `{ code: 'fake-auth-code' }`.
+   */
+  queueCodeResponse(response: GisCodeResponse): void
+  /**
+   * Queue a popup-level failure for the next `requestCode()` call, delivered
+   * via `error_callback` (e.g. `'popup_closed'`) — the channel the real GIS
+   * code client uses for a blocked/dismissed popup, which never reaches
+   * `callback`.
+   */
+  queueCodeError(type: string): void
   /**
    * Queue a popup-level failure for the next `requestAccessToken` call,
    * delivered via `error_callback` — the channel the real GIS client uses
@@ -91,6 +136,9 @@ export function createGisFake(): GisFake {
   const popupClosedRaceQueue: PopupClosedRace[] = []
   let silenceQueue = 0
   const calls: GisRecordedCall[] = []
+  const codeResponseQueue: GisCodeResponse[] = []
+  const codeErrorQueue: (string | undefined)[] = []
+  const codeCalls: GisCodeRecordedCall[] = []
   let previousGoogle: unknown
   let hadGoogle = false
 
@@ -99,6 +147,51 @@ export function createGisFake(): GisFake {
     if (next) return next
     // Default: a generic successful token response.
     return { access_token: 'fake-access-token', expires_in: 3600, scope: '' }
+  }
+
+  function nextCodeResponse(): GisCodeResponse {
+    const next = codeResponseQueue.shift()
+    if (next) return next
+    // Default: a generic successful auth-code response.
+    return { code: 'fake-auth-code' }
+  }
+
+  function initCodeClient(config: GisCodeClientConfig): GisCodeClient {
+    return {
+      requestCode() {
+        const hint = config.hint
+        const scope = config.scope ?? ''
+
+        codeCalls.push({ scope, hint })
+
+        if (silenceQueue > 0) {
+          silenceQueue -= 1
+          return
+        }
+
+        const codeError = codeErrorQueue.shift()
+        if (codeError) {
+          const errorCallback = config.error_callback
+          queueMicrotask(() => {
+            errorCallback?.({ type: codeError })
+          })
+          return
+        }
+
+        const response = nextCodeResponse()
+        const callback = config.callback
+
+        // Deliver asynchronously (microtask), matching the real GIS code
+        // client's callback-based, non-synchronous delivery.
+        queueMicrotask(() => {
+          if (response.error) {
+            callback?.({ error: response.error })
+            return
+          }
+          callback?.(response)
+        })
+      },
+    }
   }
 
   function initTokenClient(config: GisTokenClientConfig): GisTokenClient {
@@ -158,8 +251,15 @@ export function createGisFake(): GisFake {
 
   return {
     calls,
+    codeCalls,
     queueResponse(response: GisTokenResponse) {
       responseQueue.push(response)
+    },
+    queueCodeResponse(response: GisCodeResponse) {
+      codeResponseQueue.push(response)
+    },
+    queueCodeError(type: string) {
+      codeErrorQueue.push(type)
     },
     queuePopupError(type: string) {
       popupErrorQueue.push(type)
@@ -185,6 +285,7 @@ export function createGisFake(): GisFake {
         w.google.accounts.oauth2 = {}
       }
       w.google.accounts.oauth2.initTokenClient = initTokenClient
+      w.google.accounts.oauth2.initCodeClient = initCodeClient
     },
     uninstall() {
       const w = globalThis as unknown as { google?: any }
@@ -200,6 +301,9 @@ export function createGisFake(): GisFake {
       popupClosedRaceQueue.length = 0
       silenceQueue = 0
       calls.length = 0
+      codeResponseQueue.length = 0
+      codeErrorQueue.length = 0
+      codeCalls.length = 0
     },
   }
 }

@@ -1,6 +1,7 @@
 import type { Logger } from './logger.js';
 import type { StoredToken } from './types.js';
 import { acquireToken } from './token.js';
+import { refreshEnvelope } from './envelope.js';
 import { getConnection, refreshSilently } from './connection.js';
 import { clearToken, getToken } from './storage.js';
 import {
@@ -35,6 +36,15 @@ export interface DriveFetchOptions {
    * this module has no hard dependency on a network implementation.
    */
   fetchEmail?: (accessToken: string) => Promise<string>;
+  /**
+   * Server-mediated token-exchange endpoint. When set, drive-sync is in
+   * "envelope mode": token acquisition and 401 recovery go through
+   * `refreshEnvelope` (envelope.ts) rather than the legacy GIS
+   * `acquireToken`/`refreshSilently` path. Drive calls never drive the
+   * interactive code popup in this mode — only `connect()` does — so an
+   * interactive Drive call with no usable token surfaces `NeedsReauthError`.
+   */
+  tokenExchangeUrl?: string;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -98,6 +108,26 @@ export async function driveFetch(opts: DriveFetchOptions): Promise<Response> {
   // NeedsReauthError from acquireToken itself — we deliberately let that
   // propagate rather than pre-emptively short-circuiting here, since
   // acquireToken/GIS is the single source of truth for "can we get a token".
+  // Envelope (server-mediated token-exchange) mode: never touch GIS. A
+  // non-interactive call refreshes through the stored envelope; an
+  // interactive Drive call has no usable token and cannot run the code
+  // popup itself (only connect() does) -> NeedsReauthError.
+  if (opts.tokenExchangeUrl) {
+    if (interactive) {
+      throw new NeedsReauthError(
+        'Interactive Drive call in token-exchange mode requires connect()',
+        { status: 401, reason: 'exchange_failed' }
+      );
+    }
+    const token = await refreshEnvelope({
+      appId,
+      projectId,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
+      logger,
+    });
+    return performFetch(opts, token.accessToken, /* isRetryAfter401 */ false);
+  }
+
   const conn = await getConnection({ appId, projectId, requiredScopes });
   const hint = conn?.email;
 
@@ -188,6 +218,21 @@ async function performFetch(
         status: 401,
         reason: lastBodyText,
       });
+    }
+
+    // Envelope mode: clear only the token key (per decision 4/8) and recover
+    // through the stored envelope. A refreshEnvelope throw — including the 410
+    // that also clears conn+envelope — is already a NeedsReauthError; let it
+    // propagate as-is.
+    if (opts.tokenExchangeUrl) {
+      await clearToken(appId, projectId);
+      const refreshed = await refreshEnvelope({
+        appId,
+        projectId,
+        tokenExchangeUrl: opts.tokenExchangeUrl,
+        logger,
+      });
+      return performFetch(opts, refreshed.accessToken, /* isRetryAfter401 */ true);
     }
 
     await clearToken(appId, projectId);

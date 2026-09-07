@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { waitForGoogleIdentityServices } from '../gis.js'
+import { waitForGoogleIdentityServices, waitForGisCodeClient } from '../gis.js'
 import { GisLoadError } from '../errors.js'
 import type { Logger } from '../logger.js'
 
@@ -10,6 +10,25 @@ function installGis(): void {
 
 function uninstallGis(): void {
   delete (globalThis as any).google
+}
+
+/** Install both clients, as the real single gsi/client script ships them. */
+function installGisWithCodeClient(): void {
+  const w = globalThis as unknown as { google?: any }
+  w.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient: () => ({ requestAccessToken() {} }),
+        initCodeClient: () => ({ requestCode() {} }),
+      },
+    },
+  }
+}
+
+/** Install ONLY the code client — guards the separate code-client poll. */
+function installCodeClientOnly(): void {
+  const w = globalThis as unknown as { google?: any }
+  w.google = { accounts: { oauth2: { initCodeClient: () => ({ requestCode() {} }) } } }
 }
 
 describe('waitForGoogleIdentityServices', () => {
@@ -108,5 +127,51 @@ describe('waitForGoogleIdentityServices', () => {
     await vi.advanceTimersByTimeAsync(100)
 
     await expect(promise).resolves.toBeUndefined()
+  })
+})
+
+// `waitForGisCodeClient` is a SEPARATE poll from `waitForGoogleIdentityServices`
+// (it keys off `initCodeClient`, not `initTokenClient`) so the legacy token-client
+// path stays untouched. These cases mirror the legacy-poll test style above.
+describe('waitForGisCodeClient', () => {
+  beforeEach(() => {
+    uninstallGis()
+  })
+
+  afterEach(() => {
+    uninstallGis()
+    vi.useRealTimers()
+  })
+
+  it('resolves quickly when the GIS code client is already available', async () => {
+    installGisWithCodeClient()
+    await expect(waitForGisCodeClient()).resolves.toBeUndefined()
+  })
+
+  it('rejects with GisLoadError if the code client never becomes available within the timeout', async () => {
+    vi.useFakeTimers()
+    const promise = waitForGisCodeClient()
+
+    const expectation = expect(promise).rejects.toMatchObject({
+      name: 'GisLoadError',
+      message: 'Google Identity Services failed to load in time',
+    })
+
+    // Advance well past the 10s timeout in poll-interval-sized steps so the
+    // interval callback actually runs on each tick.
+    for (let i = 0; i < 105; i++) {
+      await vi.advanceTimersByTimeAsync(100)
+    }
+
+    await expectation
+    await expect(promise).rejects.toBeInstanceOf(GisLoadError)
+
+    // The polling interval must be cleared on rejection (no leaked timers).
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('resolves when ONLY initCodeClient is present (guards the separate poll)', async () => {
+    installCodeClientOnly()
+    await expect(waitForGisCodeClient()).resolves.toBeUndefined()
   })
 })

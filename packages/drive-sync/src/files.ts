@@ -22,6 +22,12 @@ interface BaseCallOptions {
   interactive?: boolean;
   logger?: Logger;
   fetchEmail?: (accessToken: string) => Promise<string>;
+  /**
+   * Server-mediated token-exchange endpoint. Forwarded verbatim into every
+   * `driveFetch` call so envelope-mode token acquisition / 401 recovery runs
+   * through `refreshEnvelope` (see http.ts). Absent for the legacy GIS path.
+   */
+  tokenExchangeUrl?: string;
 }
 
 export interface ReadOptions extends BaseCallOptions {
@@ -48,6 +54,7 @@ async function fetchRemoteVersion(
       requiredScopes: REQUIRED_SCOPES,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
     });
     const json = (await res.json()) as { version?: string; name?: string; modifiedTime?: string };
     if (json.version === undefined) return null;
@@ -101,6 +108,7 @@ export async function read(opts: ReadOptions): Promise<string | Blob | null> {
       requiredScopes: REQUIRED_SCOPES,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
     });
 
     const contentType = res.headers.get('Content-Type') ?? '';
@@ -141,6 +149,7 @@ export async function remove(opts: RemoveOptions): Promise<void> {
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
 
   // The baseline describes a file that no longer exists; leaving it behind
@@ -220,6 +229,7 @@ async function updateContent(
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   const json = (await res.json()) as { id: string; name?: string; version?: string };
 
@@ -264,6 +274,7 @@ export async function write(opts: WriteOptions): Promise<FileRef> {
       interactive: opts.interactive,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
     });
     if (existing.length > 0) {
       return updateContent(opts, existing[0].id, existing[0].version);
@@ -304,6 +315,7 @@ export async function write(opts: WriteOptions): Promise<FileRef> {
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   const json = (await res.json()) as { id: string; version?: string };
 
@@ -397,6 +409,7 @@ export async function list(opts: ListOptions): Promise<FileRef[]> {
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   const json = (await res.json()) as { files?: FileRef[] };
   return json.files ?? [];
@@ -429,6 +442,7 @@ async function createFolder(
     requiredScopes: REQUIRED_SCOPES,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
+    tokenExchangeUrl: opts.tokenExchangeUrl,
   });
   const json = (await res.json()) as { id: string };
   return json.id;
@@ -461,6 +475,7 @@ export async function ensureFolderPath(opts: EnsureFolderPathOptions): Promise<s
       interactive: opts.interactive,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
       folderId: parentId,
       mimeType: FOLDER_MIME_TYPE,
       nameEquals: name,
@@ -478,6 +493,7 @@ export async function ensureFolderPath(opts: EnsureFolderPathOptions): Promise<s
       interactive: opts.interactive,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
       name,
       parentId,
     });

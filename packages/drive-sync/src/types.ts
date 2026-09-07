@@ -5,6 +5,36 @@ export interface DriveSyncOptions {
   clientId: string;
   folderPath: string[];
   logger?: Logger;
+  /**
+   * Opt-in: when set, connect() runs the server-mediated token-exchange flow
+   * against this URL instead of the legacy GIS implicit flow. When absent,
+   * the legacy implicit flow is used unchanged.
+   */
+  tokenExchangeUrl?: string;
+}
+
+/**
+ * Decoded contents of an {@link Envelope}'s `payload`. Mirrors the fields of
+ * a Google OAuth token response that drive-sync needs.
+ */
+export interface EnvelopePayload {
+  access_token: string;
+  expiry_date: number;
+  token_type: 'Bearer';
+  scope: string;
+}
+
+/**
+ * Opaque envelope returned by the server-side token-exchange endpoint. The
+ * `sig` is a server-side signature that is NEVER verified client-side —
+ * drive-sync treats the whole structure as opaque and simply forwards the
+ * decoded `payload` into its normal token storage.
+ */
+export interface Envelope {
+  v: 2;
+  guid: string;
+  payload: EnvelopePayload;
+  sig: string;
 }
 
 /**

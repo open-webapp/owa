@@ -1,9 +1,26 @@
 import type { Logger } from './logger.js';
-import type { Connection, StoredToken } from './types.js';
-import { getConn, setConn, clearConn, getToken, clearToken } from './storage.js';
+import type { Connection, Envelope, StoredToken } from './types.js';
+import {
+  getConn,
+  setConn,
+  clearConn,
+  getToken,
+  clearToken,
+  setEnvelope,
+  setToken,
+  clearEnvelope,
+} from './storage.js';
 import { createBroadcast } from './broadcast.js';
 import { acquireToken } from './token.js';
-import { WrongAccountError } from './errors.js';
+import { acquireAuthCode } from './gis.js';
+import {
+  deriveToken,
+  postExchange,
+  postExchangeWithRetry,
+  refreshEnvelope,
+  EnvelopeRevokedError,
+} from './envelope.js';
+import { NeedsReauthError, WrongAccountError } from './errors.js';
 
 /** Mirrors refresh.ts's own buffer: a cached token this close to expiry is treated as unusable. */
 const TOKEN_REUSE_BUFFER_MS = 5 * 60 * 1000;
@@ -21,14 +38,29 @@ export interface ConnectOptions {
    * against the Google userinfo endpoint once http.ts exists.
    */
   fetchEmail: (accessToken: string) => Promise<string>;
+  /**
+   * When set, `connect()` takes the server-mediated token-exchange path:
+   * it acquires a one-time auth CODE via GIS (never an access token) and
+   * POSTs it to this endpoint, which returns a signed {@link Envelope}. The
+   * durable refresh token stays server-side. Absent, `connect()` runs the
+   * legacy client-side `initTokenClient` flow unchanged.
+   */
+  tokenExchangeUrl?: string;
 }
 
 /**
  * Interactive connection flow: acquires a token without forcing a consent
  * screen, resolves the account email, and persists the durable Connection
  * record.
+ *
+ * With `opts.tokenExchangeUrl` set, runs the envelope (server-mediated
+ * token-exchange) variant instead — see {@link connectViaEnvelope}.
  */
 export async function connect(opts: ConnectOptions): Promise<Connection> {
+  if (opts.tokenExchangeUrl) {
+    return connectViaEnvelope(opts, opts.tokenExchangeUrl);
+  }
+
   // On a re-auth the previous connection's email is the account the user is
   // expected to consent as again; pass it as a hint so the popup_closed
   // recovery probe (token.ts) can resolve a completed grant silently even
@@ -44,6 +76,72 @@ export async function connect(opts: ConnectOptions): Promise<Connection> {
     hint: existing?.email,
     logger: opts.logger,
   });
+
+  const email = await opts.fetchEmail(token.accessToken);
+
+  await setConn(opts.appId, opts.projectId, {
+    email,
+    grantedScopes: token.grantedScopes,
+    connectedAt: Date.now(),
+  });
+
+  return {
+    email,
+    needsReauth: false,
+    expiresAt: token.expiresAt,
+  };
+}
+
+/**
+ * Server-mediated token-exchange connect:
+ *  1. read the stored conn (for the account `hint` only);
+ *  2. acquire a one-time auth CODE via GIS (never touches `acquireToken` /
+ *     `initTokenClient`);
+ *  3. POST the code to the exchange endpoint for a signed envelope, retrying
+ *     transient failures via `postExchangeWithRetry`;
+ *  4. persist envelope + derived token + durable conn;
+ *  5. resolve the email once (no wrong-account compare — a fresh interactive
+ *     grant is authoritative about which account it belongs to).
+ *
+ * An {@link EnvelopeRevokedError} (410) additionally clears conn+token+envelope
+ * before propagating; every other {@link NeedsReauthError} propagates as-is.
+ */
+async function connectViaEnvelope(
+  opts: ConnectOptions,
+  tokenExchangeUrl: string
+): Promise<Connection> {
+  const existing = await getConn(opts.appId, opts.projectId);
+
+  const code = await acquireAuthCode({
+    clientId: opts.clientId,
+    scopes: opts.scopes,
+    hint: existing?.email,
+    logger: opts.logger,
+  });
+
+  let envelope: Envelope;
+  try {
+    envelope = await postExchange(tokenExchangeUrl, { code }, opts.logger);
+  } catch (err) {
+    if (err instanceof EnvelopeRevokedError) {
+      await clearConn(opts.appId, opts.projectId);
+      await clearToken(opts.appId, opts.projectId);
+      await clearEnvelope(opts.appId, opts.projectId);
+      throw err;
+    }
+    // A non-retryable rejection (400/401/404) surfaces as a plain
+    // NeedsReauthError from postExchange — propagate it untouched.
+    if (err instanceof NeedsReauthError) {
+      throw err;
+    }
+    // Anything else is a transient (network / 502 / unparseable) failure:
+    // fall through to the retrying variant.
+    envelope = await postExchangeWithRetry(tokenExchangeUrl, { code }, opts.logger);
+  }
+
+  await setEnvelope(opts.appId, opts.projectId, envelope);
+  const token = deriveToken(envelope.payload);
+  await setToken(opts.appId, opts.projectId, token);
 
   const email = await opts.fetchEmail(token.accessToken);
 
@@ -149,6 +247,15 @@ export interface GetAccessTokenOptions {
   /** Whether an interactive (popup) auth flow may be triggered if no usable cached token exists. */
   interactive: boolean;
   logger?: Logger;
+  /**
+   * When set, `getAccessToken()` takes the server-mediated token-exchange
+   * path: a stale/absent cached token is renewed via {@link refreshEnvelope}
+   * (which POSTs the stored envelope to this endpoint) rather than an
+   * interactive GIS code/token flow. A missing envelope surfaces as a
+   * `NeedsReauthError` from `refreshEnvelope` — no popup is ever shown.
+   * Absent, the legacy client-side flow runs unchanged.
+   */
+  tokenExchangeUrl?: string;
 }
 
 /**
@@ -169,6 +276,19 @@ export async function getAccessToken(opts: GetAccessTokenOptions): Promise<strin
   const cached = await getToken(opts.appId, opts.projectId);
   if (cached && cached.expiresAt > Date.now() + TOKEN_REUSE_BUFFER_MS) {
     return cached.accessToken;
+  }
+
+  // Server-mediated token-exchange mode: renew via the stored envelope, never
+  // an interactive code/token flow. A missing envelope surfaces as a
+  // NeedsReauthError from refreshEnvelope — acquireToken is never reached.
+  if (opts.tokenExchangeUrl) {
+    const token = await refreshEnvelope({
+      appId: opts.appId,
+      projectId: opts.projectId,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
+      logger: opts.logger,
+    });
+    return token.accessToken;
   }
 
   // Same rationale as connect(): hand the known account email to the
@@ -198,12 +318,19 @@ export interface DisconnectOptions {
    * revoke.
    */
   revokeFn?: (accessToken: string) => Promise<void>;
+  /**
+   * Accepted for symmetry with the other flows (connect / getAccessToken).
+   * `disconnect` clears the `envelope` key unconditionally regardless of
+   * whether this is set, so this field is currently informational only.
+   */
+  tokenExchangeUrl?: string;
 }
 
 /**
  * Disconnects a project: revokes the cached token (if any and if a
- * revokeFn was supplied), then unconditionally clears both the durable
- * connection and the cached token, and broadcasts a logout to other tabs.
+ * revokeFn was supplied), then unconditionally clears the durable
+ * connection, the cached token, and the stored envelope key, and
+ * broadcasts a logout to other tabs.
  */
 export async function disconnect(opts: DisconnectOptions): Promise<void> {
   const token = await getToken(opts.appId, opts.projectId);
@@ -213,6 +340,7 @@ export async function disconnect(opts: DisconnectOptions): Promise<void> {
 
   await clearConn(opts.appId, opts.projectId);
   await clearToken(opts.appId, opts.projectId);
+  await clearEnvelope(opts.appId, opts.projectId);
 
   createBroadcast(opts.appId).postLogout(opts.projectId);
 }

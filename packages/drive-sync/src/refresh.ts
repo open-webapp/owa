@@ -2,9 +2,10 @@ import type { Logger } from './logger.js';
 import { getConnection, refreshSilently } from './connection.js';
 import { getToken } from './storage.js';
 import { acquireToken } from './token.js';
+import { refreshEnvelope } from './envelope.js';
 import { REQUIRED_SCOPES } from './files.js';
 
-const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+export const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 export interface ActivateOptions {
   appId: string;
@@ -18,6 +19,14 @@ export interface ActivateOptions {
    * only being discovered on the next foreground Drive call.
    */
   fetchEmail?: (accessToken: string) => Promise<string>;
+  /**
+   * Server-mediated token-exchange endpoint. When set, the warm-up's
+   * non-interactive refresh goes through `refreshEnvelope` (envelope.ts) —
+   * replaying the stored envelope against this endpoint — instead of the
+   * legacy GIS `refreshSilently` / `acquireToken` path. Absent, the legacy
+   * path runs unchanged.
+   */
+  tokenExchangeUrl?: string;
   logger?: Logger;
 }
 
@@ -49,7 +58,14 @@ export async function warmUpIfNeeded(opts: ActivateOptions): Promise<void> {
       return;
     }
 
-    if (opts.fetchEmail) {
+    if (opts.tokenExchangeUrl) {
+      await refreshEnvelope({
+        appId: opts.appId,
+        projectId: opts.projectId,
+        tokenExchangeUrl: opts.tokenExchangeUrl,
+        logger: opts.logger,
+      });
+    } else if (opts.fetchEmail) {
       await refreshSilently({
         appId: opts.appId,
         projectId: opts.projectId,
