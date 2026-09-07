@@ -25,7 +25,8 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
-      - run: npm install
+      # --legacy-peer-deps: known ERESOLVE in this repo (project-sync peer @open-webapp/drive-sync ^0.5.0 vs workspace 0.6.0); plain npm install fails
+      - run: npm install --legacy-peer-deps
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
@@ -47,7 +48,8 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
-      - run: npm install
+      # --legacy-peer-deps: known ERESOLVE in this repo (project-sync peer @open-webapp/drive-sync ^0.5.0 vs workspace 0.6.0); plain npm install fails
+      - run: npm install --legacy-peer-deps
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
