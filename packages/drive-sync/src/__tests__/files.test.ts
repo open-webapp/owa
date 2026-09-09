@@ -633,6 +633,106 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     expect(withoutTimestamp?.mimeType).toBe('text/plain')
   })
 
+  it('list() returns thumbnailLink and imageMediaMetadata (including rotation) when the fake file has them', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    const id = freshId('file')
+    driveFake.files.set(id, {
+      id,
+      name: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      parents: [],
+      content: 'x',
+      thumbnailLink: 'https://lh3.googleusercontent.com/drive-thumb/abc=s220',
+      imageMediaMetadata: { width: 1920, height: 1080, rotation: 90 },
+    })
+
+    queueToken()
+    const results = await project.files.list({})
+    const f = results.find((r) => r.id === id)
+
+    expect(f?.thumbnailLink).toBe('https://lh3.googleusercontent.com/drive-thumb/abc=s220')
+    expect(f?.imageMediaMetadata).toEqual({ width: 1920, height: 1080, rotation: 90 })
+  })
+
+  it('list() leaves thumbnailLink and imageMediaMetadata undefined when the fake file lacks them', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    const id = freshId('file')
+    driveFake.files.set(id, {
+      id,
+      name: 'plain.txt',
+      mimeType: 'text/plain',
+      parents: [],
+      content: 'y',
+    })
+
+    queueToken()
+    const results = await project.files.list({})
+    const f = results.find((r) => r.id === id)
+
+    expect(f?.id).toBe(id)
+    expect(f?.thumbnailLink).toBeUndefined()
+    expect(f?.imageMediaMetadata).toBeUndefined()
+  })
+
+  it('list() reflects each file\'s own thumbnail / imageMediaMetadata state in a mixed list, with no cross-contamination', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    const richId = freshId('file')
+    driveFake.files.set(richId, {
+      id: richId,
+      name: 'rich.jpg',
+      mimeType: 'image/jpeg',
+      parents: [],
+      content: 'x',
+      thumbnailLink: 'https://lh3.googleusercontent.com/drive-thumb/abc=s220',
+      imageMediaMetadata: { width: 1920, height: 1080, rotation: 90 },
+    })
+
+    const bareId = freshId('file')
+    driveFake.files.set(bareId, {
+      id: bareId,
+      name: 'bare.txt',
+      mimeType: 'text/plain',
+      parents: [],
+      content: 'y',
+    })
+
+    queueToken()
+    const results = await project.files.list({})
+    const rich = results.find((r) => r.id === richId)
+    const bare = results.find((r) => r.id === bareId)
+
+    expect(rich?.thumbnailLink).toBe('https://lh3.googleusercontent.com/drive-thumb/abc=s220')
+    expect(rich?.imageMediaMetadata).toEqual({ width: 1920, height: 1080, rotation: 90 })
+    expect(bare?.thumbnailLink).toBeUndefined()
+    expect(bare?.imageMediaMetadata).toBeUndefined()
+  })
+
+  it('list() carries mimeType through to the returned FileRef at runtime', async () => {
+    const project = makeProject()
+    await connect(project)
+
+    const id = freshId('file')
+    driveFake.files.set(id, {
+      id,
+      name: 'shot.png',
+      mimeType: 'image/png',
+      parents: [],
+      content: 'x',
+    })
+
+    queueToken()
+    const results = await project.files.list({})
+    const f = results.find((r) => r.id === id)
+
+    expect(f?.mimeType).toBe('image/png')
+  })
+
   it('reuses a still-valid cached token across calls instead of re-acquiring one from GIS on every request', async () => {
     const project = makeProject()
     await connect(project) // 1 GIS call
