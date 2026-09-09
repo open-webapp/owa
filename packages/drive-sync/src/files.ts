@@ -394,9 +394,11 @@ export async function list(opts: ListOptions): Promise<FileRef[]> {
   // `version` comes back so the name-resolution path in write() can run its
   // staleness check without a follow-up metadata fetch. `modifiedTime` is
   // also requested so callers can get a last-modified timestamp per file
-  // without an extra round trip.
+  // without an extra round trip. `thumbnailLink` +
+  // `imageMediaMetadata(width,height,rotation)` are also requested so callers
+  // can render/orient low-res image thumbnails without an extra round trip.
   const url = `${DRIVE_BASE}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(
-    'files(id,name,mimeType,version,modifiedTime)'
+    'files(id,name,mimeType,version,modifiedTime,thumbnailLink,imageMediaMetadata(width,height,rotation))'
   )}`;
 
   const res = await driveFetch({

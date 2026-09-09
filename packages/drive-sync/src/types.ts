@@ -65,6 +65,12 @@ export interface FileRef {
   version?: string;
   /** Drive's last-modified timestamp (RFC3339), when the call requested it. */
   modifiedTime?: string;
+  /** Drive MIME type, when the call requested it. */
+  mimeType?: string;
+  /** Short-lived Drive thumbnail URL, when the call requested it and Drive supplied one; may be absent. */
+  thumbnailLink?: string;
+  /** Pixel dimensions (+ `rotation`, 0/90/180/270) for image files, when Drive supplied them. */
+  imageMediaMetadata?: { width?: number; height?: number; rotation?: number };
 }
 
 /**

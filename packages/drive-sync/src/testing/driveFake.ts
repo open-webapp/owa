@@ -36,6 +36,18 @@ export interface DriveFakeFile {
    * real Drive's `fields`-gated behavior).
    */
   modifiedTime?: string
+  /**
+   * Drive's CDN thumbnail URL; optional so tests may seed files without it
+   * (omitted from the fake's response in that case, matching real Drive's
+   * `fields`-gated behavior).
+   */
+  thumbnailLink?: string
+  /**
+   * Drive's image metadata (dimensions/rotation); optional so tests may seed
+   * files without it (omitted from the fake's response in that case, matching
+   * real Drive's `fields`-gated behavior).
+   */
+  imageMediaMetadata?: { width?: number; height?: number; rotation?: number }
 }
 
 export interface DriveFakePermission {
@@ -220,6 +232,8 @@ export function createDriveFake(): DriveFake {
       parents: f.parents,
       version: String(f.version ?? 1),
       modifiedTime: f.modifiedTime,
+      thumbnailLink: f.thumbnailLink,
+      imageMediaMetadata: f.imageMediaMetadata,
     }
   }
 
