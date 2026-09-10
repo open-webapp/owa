@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/project-sync",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "repository": {
     "type": "git",
@@ -33,7 +33,7 @@
     "idb": "^8.0.0"
   },
   "peerDependencies": {
-    "@open-webapp/drive-sync": "^0.5.0",
+    "@open-webapp/drive-sync": "^0.7.0",
     "react": "^18 || ^19"
   },
   "peerDependenciesMeta": {
