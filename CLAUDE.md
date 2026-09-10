@@ -1,5 +1,11 @@
 # Claude Code Rules
 
+## Auto-committing package changes
+
+When you modify files under `packages/drive-sync`, `packages/project-sync`, or `packages/drive-connect` as part of a task, commit those changes without waiting to be asked. Branch off `main` first, commit the change with a descriptive message, merge back to `main` (`--no-ff`), and push. Then follow the auto-tagging rule below.
+
+This is a standing instruction: treat "the change is made" as "commit, merge, tag, and push" for these three packages.
+
 ## Auto-tagging on commit
 
 When committing changes to `packages/drive-sync` or `packages/project-sync`, automatically create and push a git tag matching the corresponding version pattern to trigger the publish workflow.
