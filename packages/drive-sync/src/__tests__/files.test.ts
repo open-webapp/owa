@@ -750,3 +750,80 @@ describe('files (ported coverage + plan items #21, #22, #25, #26, #27)', () => {
     expect(gisFake.calls).toHaveLength(1)
   })
 })
+
+/**
+ * Regression: the create path must forward the serialized multipart body
+ * without ever lowering it through a UTF-8 string. A pasted PNG/JPEG makes the
+ * multipart body invalid UTF-8; `Request#text()` would turn every non-UTF-8
+ * byte into U+FFFD and fetch would re-encode that lossy string, so Drive would
+ * store a corrupted blob (no preview, no thumbnailLink). Forwarding an
+ * ArrayBuffer preserves the bytes exactly.
+ */
+describe('write() create path preserves binary media bytes', () => {
+  let gisFake: GisFake
+  let driveFake: DriveFake
+  let capturedUploadBody: unknown
+
+  beforeEach(() => {
+    capturedUploadBody = undefined
+    gisFake = createGisFake()
+    gisFake.install()
+    driveFake = createDriveFake()
+    const host = createHostFetch(driveFake)
+    vi.stubGlobal('fetch', (async (input: unknown, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : (input as Request)?.url ?? String(input)
+      const method = (init?.method ?? (input as Request)?.method ?? 'GET').toUpperCase()
+      if (method === 'POST' && url.includes('/upload/drive/v3/files') && url.includes('uploadType=multipart')) {
+        capturedUploadBody = init?.body
+      }
+      return host(input as any, init)
+    }) as unknown as typeof fetch)
+  })
+
+  afterEach(() => {
+    gisFake.uninstall()
+    vi.unstubAllGlobals()
+  })
+
+  function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+    outer: for (let i = 0; i + needle.length <= haystack.length; i += 1) {
+      for (let j = 0; j < needle.length; j += 1) {
+        if (haystack[i + j] !== needle[j]) continue outer
+      }
+      return i
+    }
+    return -1
+  }
+
+  it('forwards the multipart body as an ArrayBuffer with the raw PNG bytes intact', async () => {
+    const appId = freshId('app')
+    const projectId = freshId('proj')
+    const ds = createDriveSync({ appId, clientId: 'client-1', folderPath: ['Root'] })
+    const project = ds.project(projectId)
+
+    gisFake.queueResponse({ access_token: freshId('tok'), expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    await project.connect()
+
+    // PNG magic + bytes that are not valid UTF-8 (0x89, lone 0xFF/0xD8/0x80/0xFE).
+    const pngBytes = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8, 0xff, 0xe0, 0x80, 0x81, 0xfe, 0x00,
+    ])
+
+    gisFake.queueResponse({ access_token: freshId('tok'), expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    await project.files.write({
+      name: 'pasted.png',
+      content: new Blob([pngBytes], { type: 'image/png' }),
+      mimeType: 'image/png',
+    })
+
+    // The bug forwarded a string here; the fix forwards an ArrayBuffer.
+    expect(capturedUploadBody).toBeInstanceOf(ArrayBuffer)
+
+    const bodyBytes = new Uint8Array(capturedUploadBody as ArrayBuffer)
+    // The exact media bytes survive somewhere inside the multipart envelope.
+    expect(indexOfBytes(bodyBytes, pngBytes)).toBeGreaterThanOrEqual(0)
+    // And the U+FFFD replacement char (EF BF BD) never appears — that is the
+    // fingerprint of the lossy UTF-8 round-trip this fix removes.
+    expect(indexOfBytes(bodyBytes, new Uint8Array([0xef, 0xbf, 0xbd]))).toBe(-1)
+  })
+})

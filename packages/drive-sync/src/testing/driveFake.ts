@@ -189,7 +189,8 @@ async function readBodyText(init: RequestInit | undefined): Promise<string> {
   const body = init?.body
   if (body === undefined || body === null) return ''
   if (typeof body === 'string') return body
-  if (body instanceof Uint8Array) return new TextDecoder().decode(body)
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body)
+  if (ArrayBuffer.isView(body)) return new TextDecoder().decode(body as ArrayBufferView)
   if (typeof (body as any).text === 'function') return await (body as any).text()
   return String(body)
 }

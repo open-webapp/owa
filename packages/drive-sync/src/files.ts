@@ -295,13 +295,19 @@ export async function write(opts: WriteOptions): Promise<FileRef> {
   // and inserts a correct multipart boundary (never hand-rolled by us) and
   // exposes the resulting `Content-Type: multipart/form-data; boundary=...`
   // header, which we then forward explicitly alongside the serialized body.
-  // This also makes the request body a plain string by the time it reaches
-  // driveFetch, so environments (e.g. test fakes) that read the body via
-  // `.text()` rather than re-driving a real network stack see the fully
-  // encoded multipart payload rather than an opaque FormData object.
+  // This also makes the request body a concrete buffer by the time it reaches
+  // driveFetch, so environments (e.g. test fakes) that read the body without
+  // re-driving a real network stack see the fully encoded multipart payload
+  // rather than an opaque FormData object.
+  //
+  // The body is forwarded as an ArrayBuffer, never a string: a multipart body
+  // that carries a binary media part (a pasted PNG/JPEG) is not valid UTF-8,
+  // so `serialized.text()` would replace every non-UTF-8 byte with U+FFFD and
+  // fetch would then re-encode that lossy string, storing a corrupted blob on
+  // Drive. `arrayBuffer()` preserves the bytes exactly.
   const serialized = new Request('https://example.invalid/', { method: 'POST', body: form });
   const multipartContentType = serialized.headers.get('content-type') ?? undefined;
-  const multipartBody = await serialized.text();
+  const multipartBody = await serialized.arrayBuffer();
 
   const res = await driveFetch({
     appId: opts.appId,
