@@ -23,3 +23,11 @@ git push origin drive-connect-v<version>
 ```
 
 This automates the release process by triggering the publish workflow without manual tag creation. Each package has its own independent versioning and release lifecycle.
+
+## Keeping peer dependencies current
+
+When upgrading a dependent package, make sure all of its peer packages are bumped to depend on the latest published versions of their peers.
+
+For example, `project-sync@latest` (0.1.4) still peers `drive-sync@^0.5.0` even though a newer `drive-sync` has been published. When touching `project-sync`, update its `peerDependencies` (and `devDependencies`) to reference the current `drive-sync` version, then bump `project-sync`'s own version so the change gets published.
+
+Apply the same rule to any package in `packages/` that declares a peer on another workspace package: before publishing, verify the peer range covers the latest published version of that peer, and widen or bump it if not.
