@@ -38,6 +38,22 @@ const ref = await p.files.update(fileId, {
 })
 ```
 
+### Synchronous connection snapshot
+
+`p.getConnectionSync()` / `p.subscribeConnection()` give a framework store a
+synchronous, referentially-stable `Connection | null` without polling:
+
+```ts
+const store = {
+  get: () => p.getConnectionSync(),
+  subscribe: (onChange: () => void) => p.subscribeConnection(onChange),
+}
+```
+
+This pairing is the intended backing for `@open-webapp/drive-connect`'s React
+hook (`useDriveConnection`), and works equally well for any other
+`useSyncExternalStore`-shaped store.
+
 See `SPEC.md` for the full design: the 36 resolved decisions, storage layout,
 and refresh state machine. `SPEC.md` is descriptive, written from the shipped
 code — if it ever disagrees with the source, the source wins.

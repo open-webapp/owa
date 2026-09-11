@@ -8,6 +8,7 @@ import * as permissionsImpl from './permissions.js';
 import * as pickerImpl from './picker.js';
 import { warmUpIfNeeded } from './refresh.js';
 import { REQUIRED_SCOPES } from './files.js';
+import { createConnectionSnapshotStore } from './connectionSnapshot.js';
 import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
@@ -105,6 +106,20 @@ export interface ProjectHandle {
    */
   getAccessToken(callOpts?: CallOptions): Promise<string>;
   pickFile(options: PickFileOptions): Promise<PickedFile[]>;
+  /**
+   * Synchronous snapshot of the current Connection, backed by the
+   * per-project connectionSnapshot store (see connectionSnapshot.ts).
+   * Never returns a Promise and never throws. `null` means either
+   * disconnected, or not-yet-hydrated (the first background re-read from
+   * IndexedDB hasn't resolved yet) — callers cannot distinguish the two
+   * from this alone.
+   */
+  getConnectionSync(): Connection | null;
+  /**
+   * Subscribes to changes in the synchronous Connection snapshot (suitable
+   * for `useSyncExternalStore`). Returns an unsubscribe function.
+   */
+  subscribeConnection(cb: () => void): () => void;
   files: FilesHandle;
   permissions: PermissionsHandle;
 }
@@ -147,6 +162,46 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
   }
 
   /**
+   * Per-project synchronous Connection snapshot stores (see
+   * connectionSnapshot.ts). Populated lazily by `getOrInitStore` the first
+   * time either `getConnectionSync()` or `subscribeConnection()` is called
+   * for a given project; a later task (T3) will also commit into these
+   * stores after connect()/disconnect() resolve.
+   */
+  const snapshotStores = new Map<string, ReturnType<typeof createConnectionSnapshotStore>>();
+
+  /**
+   * Re-reads the durable Connection for `projectId` from IndexedDB (via
+   * connection.ts's `getConnection`) and commits the result into that
+   * project's snapshot store. Returns the underlying promise (rather than
+   * `void`-ing it here) so a LATER task (T3) can `await` it after
+   * connect()/disconnect(); call sites in THIS task fire it with `void`.
+   */
+  function reReadConnection(projectId: string): Promise<void> {
+    return getConnectionImpl({
+      appId,
+      projectId,
+      requiredScopes: REQUIRED_SCOPES,
+    })
+      .then((conn) => {
+        getOrInitStore(projectId).commit(conn);
+      })
+      .catch((err) => {
+        logger.warn('drive-sync: connection snapshot re-read failed', { err });
+      });
+  }
+
+  function getOrInitStore(projectId: string): ReturnType<typeof createConnectionSnapshotStore> {
+    let store = snapshotStores.get(projectId);
+    if (!store) {
+      store = createConnectionSnapshotStore();
+      snapshotStores.set(projectId, store);
+      void reReadConnection(projectId);
+    }
+    return store;
+  }
+
+  /**
    * Handles a cross-tab broadcast (see broadcast.ts) received while active.
    * `logout`: another tab's disconnect() already cleared BOTH IndexedDB
    * records (connection + token) before broadcasting, and this tab's own
@@ -165,13 +220,17 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
   function handleBroadcast(msg: BroadcastMessage): void {
     if (msg.type === 'logout') {
       void evictDbHandle(appId, msg.projectId);
+      reReadConnection(msg.projectId);
     } else if (msg.type === 'token') {
       notifyExternalTokenRefresh(msg.projectId);
+      reReadConnection(msg.projectId);
     }
   }
 
   function activate(): () => void {
     const disposeBroadcast = createBroadcast(appId).onMessage(handleBroadcast);
+
+    for (const projectId of trackedProjectIds) reReadConnection(projectId);
 
     if (typeof document === 'undefined') {
       return disposeBroadcast;
@@ -179,7 +238,10 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
 
     const runWarmUps = (): void => {
       for (const projectId of trackedProjectIds) {
-        void warmUpIfNeeded({ appId, projectId, clientId, tokenExchangeUrl, fetchEmail, logger });
+        void warmUpIfNeeded({ appId, projectId, clientId, tokenExchangeUrl, fetchEmail, logger }).then(
+          () => reReadConnection(projectId),
+          () => reReadConnection(projectId),
+        );
       }
     };
 
@@ -252,8 +314,8 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
     };
 
     return {
-      connect() {
-        return connectImpl({
+      async connect() {
+        const connection = await connectImpl({
           appId,
           projectId,
           clientId,
@@ -262,6 +324,15 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           logger,
           fetchEmail,
         });
+        // Awaited (not fire-and-forget): callers of `await connect()` must
+        // see `getConnectionSync()` already reflect this new connection the
+        // moment the promise settles — see reReadConnection's docstring.
+        // Contrast with warm-up/broadcast/lazy-kick re-reads elsewhere in
+        // this file, which are intentionally fire-and-forget (`void
+        // reReadConnection(...)`) since nothing is awaiting them to observe
+        // the snapshot synchronously.
+        await reReadConnection(projectId);
+        return connection;
       },
       getConnection() {
         return getConnectionImpl({
@@ -288,6 +359,10 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           },
         };
         await disconnectImpl(disconnectOpts);
+        // Awaited, same reasoning as connect() above: `await disconnect()`
+        // must not settle until `getConnectionSync()` reflects the
+        // post-disconnect snapshot.
+        await reReadConnection(projectId);
       },
       ensureFolderPath() {
         return filesImpl.ensureFolderPath({ ...base, folderPath });
@@ -331,6 +406,12 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           results.push({ fileId: p.fileId, name: p.name, mimeType: p.mimeType, content });
         }
         return results;
+      },
+      getConnectionSync() {
+        return getOrInitStore(projectId).get();
+      },
+      subscribeConnection(cb) {
+        return getOrInitStore(projectId).subscribe(cb);
       },
       files,
       permissions,

@@ -30,6 +30,8 @@ await drive.reconcile(knownProjectIds);          // drop orphaned per-project au
 const p = drive.project(projectId);
 await p.connect();                               // interactive; prompt:'consent'
 const conn = await p.getConnection();            // { email, needsReauth, expiresAt } | null
+const snap = p.getConnectionSync();            // Connection | null, synchronous, referentially stable
+const unsub = p.subscribeConnection(() => {}); // fires when the snapshot reference changes
 
 const picked = await p.pickFile({ apiKey: PICKER_API_KEY, appId: GCP_PROJECT_NUMBER });  // file-selection via Google Picker
 const folderId = await p.ensureFolderPath();
@@ -46,9 +48,26 @@ dispose();
 
 `createDriveSync()` itself attaches no listeners and makes no network calls. Every Drive-op call site accepts an optional `{ interactive?: boolean }` (default `false`) and resolves its own token internally — no caller ever threads a token or a `projectId` string into an HTTP call by hand.
 
-Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
+Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`, plus `getConnectionSync`/`subscribeConnection`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
 
 `getAccessToken()` is the one deliberate exception to `Connection` never exposing secret material (types.ts): it exists solely so an app can feed the token to Google Picker (`setOAuthToken()`), which runs outside this library's control and has no other way to read it. Reuses a cached token while it has more than 5 minutes left; otherwise acquires one (interactive by default, since callers use this to drive a UI the user is actively interacting with).
+
+### Connection snapshot
+
+`index.ts` holds one in-memory `Connection | null` per `projectId`, in a `snapshotStores` Map inside the `createDriveSync` closure (alongside `trackedProjectIds`) — one `ConnectionSnapshotStore` (`connectionSnapshot.ts`) per project, created lazily on first access. Each store shallow-compares the incoming `Connection` on `email`/`needsReauth`/`expiresAt` before replacing its held reference, so `get()` returns a referentially-stable value suitable for `useSyncExternalStore`.
+
+`null` from `getConnectionSync()` is ambiguous by design: it means either "disconnected" or "not yet hydrated" (the first background re-read from IndexedDB hasn't resolved). Callers cannot distinguish the two from the return value alone.
+
+The snapshot is (re-)read from IndexedDB via `getConnection()` in several places, all but one of them fire-and-forget:
+
+- **Lazily, on first access** — the first call to `getConnectionSync()` or `subscribeConnection()` for a project kicks off a `void`-ed re-read.
+- **On a background warm-up** — `refresh.ts`'s `warmUpIfNeeded`, run from `activate()`'s `visibilitychange`/`pageshow` handlers.
+- **On a cross-tab `logout`/`token` broadcast** — `handleBroadcast` re-reads the snapshot for the affected project. This only fires while `activate()` has been called (broadcast listening starts there).
+- **For every tracked project, at `activate()` itself** — so already-registered projects get an immediate re-read when activation starts.
+
+**The one exception:** after `connect()`/`disconnect()`, the re-read is `await`ed *before* the call resolves. This is the one place callers can rely on synchronous-after-await freshness — the moment `await p.connect()` (or `disconnect()`) returns, `p.getConnectionSync()` already reflects the new state. Every other re-read above is intentionally fire-and-forget, since nothing is awaiting them to observe the snapshot synchronously.
+
+One behavioral consequence worth calling out: because the broadcast handler re-reads on `logout`, a `disconnect()` in one tab becomes observable to `subscribeConnection()` listeners in every other open tab — a capability the async-only `getConnection()` never had (nothing pushes to it).
 
 ## 2. The 41 resolved design decisions
 
@@ -108,6 +127,8 @@ Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHand
 41. **Envelope error mapping, opaque `sig`, no schema bump** — `envelope.ts` maps exchange failures onto typed reauth reasons: `410` → clear conn+token+envelope, then `NeedsReauthError` (`reason: 'refresh_token_revoked'`, surfaced internally as the distinguishable `EnvelopeRevokedError` subclass); `502` / other `5xx` / network throw / unparseable body → up to two retries (500ms, 1500ms) then `NeedsReauthError` (`reason: 'exchange_unavailable'`); other non-2xx (`400`/`401`/`404`/`403`/`409`) → `NeedsReauthError` (`reason: 'exchange_failed'`), no retry. The envelope's `sig` is a server signature that is **never** verified client-side — the structure is treated as fully opaque and only `payload` is read. The `envelope` key is added to the existing `auth` store with **no IndexedDB version bump** (still version 1).
 
 42. **`list()` passes through `thumbnailLink` + `imageMediaMetadata`, unfiltered and verbatim** — `files.ts`'s `list()` extends the same `fields` mask touched in #36's `modifiedTime` change to also request `thumbnailLink` and `imageMediaMetadata(width,height,rotation)`; `FileRef` (`types.ts`) gains three optional fields — `mimeType?` (already fetched, previously just untyped), `thumbnailLink?`, and `imageMediaMetadata?: { width?; height?; rotation? }` — all `fields`-gated and may be absent on older or partial responses. `list()` stays unfiltered: it returns every file of any MIME type with no `image/` check and no opt-in flag, and `thumbnailLink` is passed through exactly as Drive returns it — no blob fetch, no URL rewrite, no `=s220` size munging, and no `files.thumbnail()` helper. Caveat: `thumbnailLink` is a short-lived URL (good for only ~hours) that can require the browser to be carrying Google auth context for the file's owning account, so a cross-origin bare `<img src>` may 403; rendering is the consuming app's responsibility, and it can fall back to `getAccessToken()` + fetch-to-blob itself. (Label is `42` though this is only the 41st entry — the section carries a duplicate `7.` label and a merged `25–27.` entry, so the labels have always run one ahead of the item count; no existing entry is renumbered.)
+
+43. **Synchronous connection snapshot, per project** — `index.ts`'s `ProjectHandle` gains `getConnectionSync(): Connection | null` and `subscribeConnection(cb): () => void`, backed by a new `connectionSnapshot.ts` (`createConnectionSnapshotStore`) held per `projectId` in the `snapshotStores` Map alongside `trackedProjectIds`. The store shallow-compares `email`/`needsReauth`/`expiresAt` so its reference stays stable across no-op re-reads (`useSyncExternalStore`-friendly). It is populated lazily on first access, kept warm by the same warm-up/broadcast/`activate()` paths that already existed, and — the one synchronous-after-await guarantee in the package — re-read and `await`ed to completion inside `connect()`/`disconnect()` before those calls resolve. A side effect: cross-tab `logout` broadcasts now push a visible state change to `subscribeConnection()` listeners, which the async-only `getConnection()` never did.
 
 ## 3. Storage layout
 
