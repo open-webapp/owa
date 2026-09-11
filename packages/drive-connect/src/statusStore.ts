@@ -1,26 +1,13 @@
 import type { DriveAuthStatus } from './types.js';
 
 /**
- * The initial disconnected snapshot. Reused by auth.ts as the starting state.
+ * Shallow-compares the 7 fields of a DriveAuthStatus snapshot.
+ *
+ * Exported for the merged-snapshot gate in auth.ts, which combines the
+ * overlay store's `{ connecting, error }` with the connection-derived fields
+ * to decide whether the merged DriveAuthStatus actually changed.
  */
-export const DISCONNECTED_STATUS: DriveAuthStatus = {
-  connected: false,
-  email: null,
-  expiresAt: null,
-  needsReauth: false,
-  tokenValid: false,
-  connecting: false,
-  error: null,
-};
-
-export interface StatusStore {
-  get(): DriveAuthStatus;
-  set(next: DriveAuthStatus): void;
-  patch(partial: Partial<DriveAuthStatus>): void;
-  subscribe(fn: () => void): () => void;
-}
-
-function shallowEqual(a: DriveAuthStatus, b: DriveAuthStatus): boolean {
+export function shallowEqualStatus(a: DriveAuthStatus, b: DriveAuthStatus): boolean {
   return (
     a.connected === b.connected &&
     a.email === b.email &&
@@ -32,17 +19,33 @@ function shallowEqual(a: DriveAuthStatus, b: DriveAuthStatus): boolean {
   );
 }
 
+export interface OverlayStatus {
+  connecting: boolean;
+  error: string | null;
+}
+
+export interface OverlayStore {
+  get(): OverlayStatus;
+  patch(partial: Partial<OverlayStatus>): void;
+  subscribe(fn: () => void): () => void;
+}
+
+function shallowEqualOverlay(a: OverlayStatus, b: OverlayStatus): boolean {
+  return a.connecting === b.connecting && a.error === b.error;
+}
+
 /**
- * Tiny non-React store suitable for use with useSyncExternalStore.
+ * Tiny non-React store holding just the `{ connecting, error }` overlay that
+ * auth.ts layers on top of the connection-derived DriveAuthStatus fields.
  *
  * - `get()` returns a stable reference; the internal snapshot is only replaced
- *   when at least one of the 7 fields differs (shallow compare).
- * - `set` / `patch` notify listeners only when the snapshot reference changed.
+ *   when at least one of the 2 fields differs (shallow compare).
+ * - `patch` notifies listeners only when the snapshot reference changed.
  * - `subscribe` returns an unsubscribe fn; unsubscribing during a notify pass
  *   is safe (listeners are iterated over a copy).
  */
-export function createStatusStore(initial: DriveAuthStatus): StatusStore {
-  let snapshot: DriveAuthStatus = initial;
+export function createOverlayStore(initial: OverlayStatus): OverlayStore {
+  let snapshot: OverlayStatus = initial;
   const listeners = new Set<() => void>();
 
   function notify(): void {
@@ -51,21 +54,15 @@ export function createStatusStore(initial: DriveAuthStatus): StatusStore {
     }
   }
 
-  function commit(next: DriveAuthStatus): void {
-    if (shallowEqual(snapshot, next)) return;
-    snapshot = next;
-    notify();
-  }
-
   return {
-    get(): DriveAuthStatus {
+    get(): OverlayStatus {
       return snapshot;
     },
-    set(next: DriveAuthStatus): void {
-      commit(next);
-    },
-    patch(partial: Partial<DriveAuthStatus>): void {
-      commit({ ...snapshot, ...partial });
+    patch(partial: Partial<OverlayStatus>): void {
+      const next = { ...snapshot, ...partial };
+      if (shallowEqualOverlay(snapshot, next)) return;
+      snapshot = next;
+      notify();
     },
     subscribe(fn: () => void): () => void {
       listeners.add(fn);

@@ -43,26 +43,33 @@ Scope: user-visible behavior of `<GoogleDriveWidget />` and the `DriveAuthHandle
 
 ## Status-freshness triggers
 
-Status is re-read (`auth.refresh()`, non-interactive, never opens a Google window) on:
+Status is push-updated, not polled or re-read. It comes from drive-sync's connection-snapshot subscription (`drive.project(id).subscribeConnection`) fanned in with the local `{connecting, error}` overlay by an internal helper reachable only through the `useDriveConnection` React hook — there is no standalone `auth.subscribe()` any more.
 
-- Widget mount — once.
-- `document` `visibilitychange` when `visibilitystate` becomes `visible`.
-- Completion of the widget's own connect (via the connect flow) / disconnect.
-- Host calling `auth.refresh()` directly (e.g. after a host Drive op hits `NeedsReauthError`).
+The widget's status refreshes when:
 
-There is no drive-sync connection-change subscription. On mount the widget refreshes status only — it never starts Drive token warm-up. `auth.activate()` is host-called and host-disposed; the widget never calls it.
+- The drive-sync snapshot changes after any `connect()`/`disconnect()` — this tab's own, or another tab's. For this tab's own call, the re-read is already `await`ed by drive-sync before `connect()`/`disconnect()` resolves, so there is nothing left to wait for.
+- Drive-sync's background warm-up runs (wired via `activate()`).
+- A cross-tab logout/token broadcast arrives (**new:** cross-tab logout now propagates to the widget — disconnecting in one tab is reflected in another tab's widget).
+
+`tokenValid` updates on that same notify cadence rather than being recomputed continuously — it is frozen between notifies (last connect/disconnect/warm-up/broadcast) rather than recomputed on every render.
+
+There is no mount re-read, no `visibilitychange` handler in the widget, and no `auth.refresh()` — none of those exist any more. Warm-up/visibility handling lives entirely in drive-sync's `activate()`, host-wired.
 
 ## Edge cases
 
 - Double-click Connect → one Google popup. `connect()` and `ensureFresh()` share one in-flight guard per handle, so concurrent interactive requests fold into one flow.
 - Interactive connect that does not resolve within 10s → rejects with `Google auth timed out`; status returns to disconnected.
 - Token-runway buffer `tokenBufferMs` (default 5 min): `ensureFresh()` returns the cached connection without any interactive call only if it is not `needsReauth`, has a real `expiresAt`, and `expiresAt` is strictly greater than `Date.now() + tokenBufferMs`. Otherwise it opens an interactive connect.
+- Cross-tab logout: disconnecting in another tab now flips this tab's widget to the disconnected state (via drive-sync's `logout` broadcast) while `auth.activate()` is wired.
+- `tokenValid` can be briefly stale between notifies (frozen at the last connect/disconnect/warm-up/broadcast), not recomputed on every render — acceptable given the existing token buffer.
 
 ## Host-readable status
 
-`DriveAuthStatus` via `auth.getStatus()` / store subscription: `connected`, `email`, `expiresAt`, `needsReauth`, `tokenValid`, `connecting`, `error`.
+`DriveAuthHandle` no longer exposes `getStatus()` or `subscribe()` — status is readable **only** through the `useDriveConnection(auth)` React hook, which surfaces `connected`, `email`, `connecting`, `error`, `needsReauth` (`refresh` removed).
 
-`useDriveConnection(auth)` surfaces: `connected`, `email`, `connecting`, `error`, `needsReauth`, plus `refresh`.
+A non-React host previously could call `auth.getStatus()`/`auth.subscribe()` directly; that capability is gone. A non-React host must now read `drive.project(id).getConnectionSync()`/`subscribeConnection()` itself and build its own `tokenValid`/overlay merge — drive-connect provides no equivalent outside React.
+
+`DriveAuthStatus` (the hook's underlying return shape) is unchanged in its 5-field meaning (`connected`, `email`, `connecting`, `error`, `needsReauth`).
 
 ## Class-name hooks
 

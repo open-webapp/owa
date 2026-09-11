@@ -9,7 +9,7 @@
 // existing `describe` blocks.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { createDriveAuth } from '../auth.js';
 import type { Connection } from '../types.js';
@@ -135,57 +135,72 @@ describe('GoogleDriveWidget — four states (decision 15)', () => {
 });
 
 describe('GoogleDriveWidget — mount / visibility / unmount lifecycle', () => {
-  it('mounts with exactly ONE auth.refresh() and ZERO auth.activate()', async () => {
+  it('mounts with ZERO auth.activate() calls and hydrates from the drive-sync snapshot', async () => {
     const h = newHarness();
-    const auth = createDriveAuth({ drive: h.drive, projectId: h.projectId });
+    await h.seedConnection({ email: 'hydrate@example.com' });
 
-    const refreshSpy = vi.spyOn(auth, 'refresh');
+    const auth = createDriveAuth({ drive: h.drive, projectId: h.projectId });
     const activateSpy = vi.spyOn(auth, 'activate');
 
     render(<GoogleDriveWidget auth={auth} />);
 
-    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+    // The widget itself never calls activate() — warm-up/visibility refresh
+    // is host-wired (drive-sync's own activate()) outside this component.
+    // Hydration happens lazily via the merged snapshot's subscribeConnection
+    // kick, so the connected render only appears after that settles.
+    await screen.findByText(/Connected as/);
+    expect(screen.getByText('hydrate@example.com')).toBeInTheDocument();
     expect(activateSpy).not.toHaveBeenCalled();
   });
 
-  it('a visibilitychange to "visible" triggers another auth.refresh()', async () => {
+  it('a subscribeConnection notification re-renders the widget', async () => {
     const h = newHarness();
     const auth = createDriveAuth({ drive: h.drive, projectId: h.projectId });
-
-    const refreshSpy = vi.spyOn(auth, 'refresh');
 
     render(<GoogleDriveWidget auth={auth} />);
-    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+    await screen.findByRole('button', { name: 'Connect Google Drive' });
 
-    Object.defineProperty(document, 'visibilityState', {
-      value: 'visible',
-      configurable: true,
+    // Drive the connection change through the real drive-sync facade
+    // directly (bypassing the widget's own connect() call) so this
+    // exercises the fan-in from `subscribeConnection` rather than the
+    // widget's click handler.
+    h.gisFake.queueResponse({
+      access_token: 'tok-fanin',
+      expires_in: 3600,
+      scope: FULL_SCOPE,
     });
-    fireEvent(document, new Event('visibilitychange'));
+    await act(async () => {
+      await h.drive.project(h.projectId).connect();
+    });
 
-    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Connected as/)).toBeInTheDocument();
   });
 
-  it('unmount removes the visibilitychange listener (no further auth.refresh())', async () => {
+  it('unmount unsubscribes cleanly (no update-after-unmount warning)', async () => {
     const h = newHarness();
-    const auth = createDriveAuth({ drive: h.drive, projectId: h.projectId });
+    await h.seedConnection({ email: 'gone@example.com' });
 
-    const refreshSpy = vi.spyOn(auth, 'refresh');
+    const auth = createDriveAuth({ drive: h.drive, projectId: h.projectId });
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { unmount } = render(<GoogleDriveWidget auth={auth} />);
-    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+    await screen.findByText(/Connected as/);
 
     unmount();
 
-    Object.defineProperty(document, 'visibilityState', {
-      value: 'visible',
-      configurable: true,
-    });
-    fireEvent(document, new Event('visibilitychange'));
+    // Trigger a drive-sync snapshot change after unmount — must not throw
+    // or produce a React "update on unmounted component" warning.
+    await h.drive.project(h.projectId).disconnect();
 
-    // Give any stray async listener a chance to fire before asserting.
-    await Promise.resolve();
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    const unmountedWarning = consoleErrorSpy.mock.calls.some((args) =>
+      args.some((arg) => typeof arg === 'string' && /unmounted/i.test(arg)),
+    );
+    expect(unmountedWarning).toBe(false);
+
+    consoleErrorSpy.mockRestore();
   });
 });
 

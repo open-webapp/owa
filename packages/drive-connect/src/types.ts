@@ -19,9 +19,6 @@ export interface DriveAuthStatus {
 }
 
 export interface DriveAuthHandle {
-  getStatus(): DriveAuthStatus;
-  subscribe(listener: () => void): () => void;
-  refresh(): Promise<DriveAuthStatus>;
   connect(): Promise<Connection>;
   disconnect(): Promise<void>;
   ensureFresh(): Promise<Connection>;

@@ -15,10 +15,10 @@ host's `onConnected` / `onDisconnected` callbacks.
 ## Install
 
 ```sh
-npm i @open-webapp/drive-connect@^0.1.0 @open-webapp/drive-sync@^0.6.0 react@^19
+npm i @open-webapp/drive-connect@^0.2.0 @open-webapp/drive-sync@^0.8.0 react@^19
 ```
 
-Both peers are required (non-optional). Pin `^0.1.0` — see
+Both peers are required (non-optional). Pin `^0.2.0` — see
 [Install from npm](#install-from-npm).
 
 ## Usage
@@ -54,8 +54,11 @@ function DriveSettings() {
   // Warm-up is host-wired — see the note below.
   useEffect(() => driveAuth.activate(), [driveAuth])
 
-  const { connected, email, connecting, error, needsReauth, refresh } =
+  const { connected, email, connecting, error, needsReauth } =
     useDriveConnection(driveAuth)
+  // Status updates arrive automatically — this tab's own connect()/disconnect(),
+  // drive-sync's background warm-up, and cross-tab logout/token broadcasts all
+  // push a re-render with no manual refresh call.
 
   return (
     <GoogleDriveWidget
@@ -88,34 +91,43 @@ async function saveToDrive(json: string): Promise<void> {
 
 | Member | Interactive? | Notes |
 |---|---|---|
-| `getStatus()` | no | current `DriveAuthStatus` |
-| `subscribe(fn)` | no | returns an unsubscribe fn |
-| `refresh()` | no | recompute status from the stored connection; public so hosts can call it after their own Drive op hits `NeedsReauthError` |
-| `connect()` | yes | races a 10s `Error('Google auth timed out')`; on failure clears status to disconnected + error, on success refreshes status |
+| `connect()` | yes | races a 10s `Error('Google auth timed out')`; on failure the overlay records the error, on success drive-sync's own awaited snapshot re-read means status is already current |
 | `disconnect()` | yes | leaves connected status intact on failure |
 | `ensureFresh()` | maybe | cached-token fast path, else `connect()` — the call plain module code makes before Drive I/O |
 | `activate()` | no | host-called passthrough to `drive.activate()`; returns a disposer |
 
+That's the whole interface — `getStatus()`, `subscribe()`, and `refresh()` are
+**all** removed. `DriveAuthHandle` exposes no way to read or subscribe to
+status any more; the only supported way to read live status is
+`useDriveConnection(auth)`. A non-React host must read
+`drive.project(id).getConnectionSync()` / `subscribeConnection()` directly and
+build its own merge — see
+[Migrating from 0.1.x](#migrating-from-01x).
+
 One `connectInFlight` guard per handle is shared by `connect()` and
-`ensureFresh()` — two concurrent callers open **one** Google popup. Status also
-refreshes on widget mount and on `document` `visibilitychange -> visible`.
+`ensureFresh()` — two concurrent callers open **one** Google popup. Status
+updates arrive automatically via drive-sync's connection-snapshot
+subscription and drive-sync's own `activate()`-driven warm-up/cross-tab
+broadcasts — no mount re-read, no `visibilitychange` handler in this package.
 
 `DriveAuthStatus` = `{ connected, email, expiresAt, needsReauth, tokenValid,
-connecting, error }`.
+connecting, error }` — the hook's underlying shape, unchanged.
 
 ### `useDriveConnection(auth)`
 
 `useSyncExternalStore`-backed, no mount side effects. Returns
-`{ connected, email, connecting, error, needsReauth, refresh }`.
+`{ connected, email, connecting, error, needsReauth }`.
 
 ### `<GoogleDriveWidget auth ... />`
 
 `GoogleDriveWidgetProps` = `{ auth, onConnected?, onDisconnected?, classNames?,
 description? }`. Renders four states (not connected / connecting /
 connected + Disconnect / connected + needsReauth + Reconnect). Errors render
-inline via `role="alert"` — never `window.alert`. The widget calls
-`auth.refresh()` on mount but **never** `auth.activate()`. `onConnected(connection)`
-and `onDisconnected()` let the host do its own content work.
+inline via `role="alert"` — never `window.alert`. The widget never re-reads
+status itself and **never** calls `auth.activate()` — it only renders whatever
+`useDriveConnection` currently reports, which updates automatically.
+`onConnected(connection)` and `onDisconnected()` let the host do its own
+content work.
 
 `Connection` is re-exported from `@open-webapp/drive-sync` for typing the
 `onConnected` / `ensureFresh` / `connect` result.
@@ -162,15 +174,35 @@ useEffect(() => driveAuth.activate(), [driveAuth])
 An app may delay it — e.g. until after a password unlock — since the widget can
 mount before unlock.
 
+Wiring `drive.activate()` is now also what keeps the widget's connection
+status fresh: it drives drive-sync's visibility-based warm-up and cross-tab
+broadcast handling, both of which push a snapshot-change notify that
+`useDriveConnection` observes. Without it, the widget still updates on this
+tab's own `connect()`/`disconnect()` (drive-sync awaits that snapshot re-read
+before those calls resolve), but **not** on cross-tab events or background
+token refresh.
+
 ### Install from npm
 
-Consume the published package and pin `^0.1.0`. No `file:` / workspace-link
+Consume the published package and pin `^0.2.0`. No `file:` / workspace-link
 consumption.
 
 ### Popup-closed recovery is drive-sync's job
 
 drive-connect surfaces auth errors as-is. drive-sync already handles
 popup-closed recovery internally — don't add app-level retries on top.
+
+### Migrating from 0.1.x
+
+- `auth.refresh()` / `useDriveConnection(auth).refresh` are removed.
+- `auth.getStatus()` / `auth.subscribe()` are **also** removed —
+  `useDriveConnection(auth)` is now the only supported way to read status. A
+  non-React host must hand-roll its own merge over
+  `drive.project(id).getConnectionSync()` / `subscribeConnection()`.
+- Delete any host code calling the removed methods.
+- Make sure `drive.activate()` is wired (see above) for cross-tab and warm-up
+  freshness — without it the widget only updates on its own `connect()`/`disconnect()`.
+- Bump `@open-webapp/drive-sync` to `^0.8.0`.
 
 ---
 
