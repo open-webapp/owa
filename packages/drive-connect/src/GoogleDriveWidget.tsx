@@ -1,18 +1,20 @@
 /**
  * GoogleDriveWidget: presentational Drive connect/disconnect control.
  *
- * Reads live auth status from a `DriveAuthHandle` via `useDriveConnection` and
- * renders one of four states (disconnected / connected / needs-reauth / error).
- * Markup shape is ported from portfolio's `DriveRestorePanel` connect block and
- * notesdiary's `SettingsView` `section === 'drive'` block, restyled onto the
- * package's own `owa-drive-*` class vocabulary.
+ * Reads live auth status from a `DriveAuthHandle` via `useDriveConnection`,
+ * which fans in drive-sync's `subscribeConnection` snapshot plus the local
+ * overlay, and renders one of four states (disconnected / connected /
+ * needs-reauth / error). Markup shape is ported from portfolio's
+ * `DriveRestorePanel` connect block and notesdiary's `SettingsView`
+ * `section === 'drive'` block, restyled onto the package's own
+ * `owa-drive-*` class vocabulary.
  *
- * Warm-up (`auth.activate()`) is host-driven (decision 25) — this component
- * only ever calls `auth.refresh()`, and swallows its rejections because the
- * handle already records failures into its status store.
+ * Warm-up and visibility-driven refresh are handled by drive-sync's
+ * `activate()`, wired up by the host outside this package — this widget
+ * never re-reads status on mount or on visibility change; it only renders
+ * whatever `useDriveConnection` currently reports.
  */
 
-import { useEffect } from 'react';
 import type { GoogleDriveWidgetProps } from './types.js';
 import { useDriveConnection } from './useDriveConnection.js';
 
@@ -26,20 +28,6 @@ export function GoogleDriveWidget({
   description,
 }: GoogleDriveWidgetProps) {
   const { connected, email, connecting, error, needsReauth } = useDriveConnection(auth);
-
-  useEffect(() => {
-    auth.refresh().catch(() => {});
-  }, [auth]);
-
-  useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === 'visible') {
-        auth.refresh().catch(() => {});
-      }
-    };
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
-  }, [auth]);
 
   const handleConnect = async () => {
     try {

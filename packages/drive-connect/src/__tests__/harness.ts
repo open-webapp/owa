@@ -54,6 +54,8 @@ export interface Harness {
   seedConnection(opts?: SeedConnectionOptions): Promise<void>
   /** Uninstall both fakes and restore global fetch. Safe to call twice. */
   cleanup(): void
+  /** Simulates another tab logging out, via the same channel drive-sync's `createBroadcast('test-app')` uses. */
+  crossTabLogout(): void
 }
 
 export function makeHarness(): Harness {
@@ -136,5 +138,20 @@ export function makeHarness(): Harness {
     }
   }
 
-  return { drive, gisFake, driveFake, projectId, seedConnection, cleanup }
+  function crossTabLogout(): void {
+    new BroadcastChannel('owa-drive-test-app').postMessage({
+      type: 'logout',
+      projectId,
+    })
+  }
+
+  return {
+    drive,
+    gisFake,
+    driveFake,
+    projectId,
+    seedConnection,
+    cleanup,
+    crossTabLogout,
+  }
 }

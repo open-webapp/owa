@@ -1,5 +1,5 @@
 import type { Connection, DriveAuthHandle, DriveAuthOptions, DriveAuthStatus } from './types.js';
-import { createStatusStore, DISCONNECTED_STATUS } from './statusStore.js';
+import { createOverlayStore, shallowEqualStatus } from './statusStore.js';
 
 /** Interactive-call timeout, ported from portfolio's `handleConnect` Promise.race. */
 const INTERACTIVE_TIMEOUT_MS = 10_000;
@@ -26,18 +26,24 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Symbol-keyed internal accessor for the merged status snapshot/subscription. */
+export const INTERNAL_STATUS = Symbol('driveAuthInternalStatus');
+
 /**
  * Builds the non-interactive auth controller for one project.
  *
- * `refresh()` never opens a Google window and never runs through
- * `beforeInteractive`. `connect()` / `disconnect()` run the single interactive
- * drive-sync call through `beforeInteractive` (the `wrap`), guard against a
- * second concurrent connect via `connectInFlight`, and race the interactive
- * call against a 10s timeout. `ensureFresh()` returns the cached `Connection`
- * with zero interactive calls when the token still has runway, and otherwise
- * falls through to the shared `connect()` flow (same `connectInFlight` guard
- * and 10s timeout). `activate()` is a host-called passthrough to drive-sync's
+ * `connect()` / `disconnect()` run the single interactive drive-sync call
+ * through `beforeInteractive` (the `wrap`), guard against a second concurrent
+ * connect via `connectInFlight`, and race the interactive call against a 10s
+ * timeout. `ensureFresh()` returns the cached `Connection` with zero
+ * interactive calls when the token still has runway, and otherwise falls
+ * through to the shared `connect()` flow (same `connectInFlight` guard and
+ * 10s timeout). `activate()` is a host-called passthrough to drive-sync's
  * background-refresh lifecycle.
+ *
+ * The merged `DriveAuthStatus` (connection-derived fields + the `{connecting,
+ * error}` overlay) is exposed only via the `INTERNAL_STATUS` symbol, not as
+ * public `getStatus`/`subscribe` methods.
  */
 export function createDriveAuth({
   drive,
@@ -45,53 +51,78 @@ export function createDriveAuth({
   tokenBufferMs = 5 * 60 * 1000,
   beforeInteractive,
 }: DriveAuthOptions): DriveAuthHandle {
-  const store = createStatusStore(DISCONNECTED_STATUS);
+  const overlay = createOverlayStore({ connecting: false, error: null });
 
   // Never cache the project handle; resolve it per use.
   const project = () => drive.project(projectId);
 
-  // ONE per handle instance. Shared by the widget's Connect button and (T6)
+  // ONE per handle instance. Shared by the widget's Connect button and
   // `ensureFresh()`, so back-to-back interactive requests fold into one flow
   // and one Google window.
   let connectInFlight: Promise<Connection> | null = null;
 
   // Wraps the single interactive drive-sync call (host uses this for e.g. a
   // service-worker reload suppression). Invoked exactly once per `connect()`
-  // and once per `disconnect()`; NEVER for `refresh()` or (T6) the cached-token
-  // fast path of `ensureFresh()`.
+  // and once per `disconnect()`; NEVER for the cached-token fast path of
+  // `ensureFresh()`.
   const wrap = beforeInteractive ?? (<T,>(fn: () => Promise<T>) => fn());
 
-  function getStatus(): DriveAuthStatus {
-    return store.get();
-  }
+  let mergedSnapshot: DriveAuthStatus | null = null;
 
-  function subscribe(listener: () => void): () => void {
-    return store.subscribe(listener);
-  }
-
-  async function refresh(): Promise<DriveAuthStatus> {
-    const conn = await project().getConnection();
-    const current = store.get();
-    const snapshot: DriveAuthStatus = {
+  /** Combines drive-sync's synchronous connection snapshot with the overlay. */
+  function computeMerged(): DriveAuthStatus {
+    const conn = project().getConnectionSync();
+    const o = overlay.get();
+    return {
       connected: conn !== null,
       email: conn?.email ?? null,
       expiresAt: conn?.expiresAt ?? null,
       needsReauth: conn?.needsReauth ?? false,
       tokenValid: isTokenUsable(conn, tokenBufferMs),
-      connecting: current.connecting,
-      error: current.error,
+      connecting: o.connecting,
+      error: o.error,
     };
-    store.set(snapshot);
-    return snapshot;
+  }
+
+  /**
+   * Recomputes the merged snapshot and replaces the cached reference only when
+   * it actually changed (shallow compare). This is the ONLY place
+   * `isTokenUsable`/`Date.now()` gets evaluated.
+   */
+  function recomputeMerged(): void {
+    const next = computeMerged();
+    if (!mergedSnapshot || !shallowEqualStatus(mergedSnapshot, next)) {
+      mergedSnapshot = next;
+    }
+  }
+
+  /** Lazily computes the merged snapshot on first access; cached thereafter. */
+  function getMergedSnapshot(): DriveAuthStatus {
+    if (!mergedSnapshot) {
+      recomputeMerged();
+    }
+    return mergedSnapshot!;
+  }
+
+  function subscribeMerged(listener: () => void): () => void {
+    const notify = () => {
+      recomputeMerged();
+      listener();
+    };
+    const unA = project().subscribeConnection(notify);
+    const unB = overlay.subscribe(notify);
+    return () => {
+      unA();
+      unB();
+    };
   }
 
   /**
    * The body of a connect flow. Races the interactive `project().connect()`
-   * (through `wrap`) against a 10s timeout, normalises the result, and folds
-   * the outcome into the status store. Any thrown value — timeout, GIS/consent
-   * rejection, a drive-sync error surviving its own popup-closed recovery —
-   * propagates UNCHANGED (same instance) after the store is reset to
-   * disconnected+error.
+   * (through `wrap`) against a 10s timeout, and folds the outcome into the
+   * overlay store. Any thrown value — timeout, GIS/consent rejection, a
+   * drive-sync error surviving its own popup-closed recovery — propagates
+   * UNCHANGED (same instance) after the overlay is updated with the error.
    */
   async function runConnect(): Promise<Connection> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -103,11 +134,10 @@ export function createDriveAuth({
       if (!connection) {
         throw new Error('No connection returned from Google Drive');
       }
-      await refresh();
-      store.patch({ connecting: false, error: null });
+      overlay.patch({ connecting: false, error: null });
       return connection;
     } catch (err) {
-      store.set({ ...DISCONNECTED_STATUS, error: messageOf(err) });
+      overlay.patch({ connecting: false, error: messageOf(err) });
       throw err;
     } finally {
       // Clear the timer whether the interactive call resolved or rejected, so
@@ -122,7 +152,7 @@ export function createDriveAuth({
     if (connectInFlight) {
       return connectInFlight;
     }
-    store.patch({ connecting: true, error: null });
+    overlay.patch({ connecting: true, error: null });
     connectInFlight = runConnect().finally(() => {
       connectInFlight = null;
     });
@@ -131,22 +161,19 @@ export function createDriveAuth({
 
   async function disconnect(): Promise<void> {
     // Never routed through `connectInFlight`.
-    store.patch({ connecting: true, error: null });
+    overlay.patch({ connecting: true, error: null });
     try {
       await wrap(() => project().disconnect());
     } catch (err) {
       // Only `connecting` / `error` change — the connected status is left
       // intact so a failed disconnect doesn't visually drop the account.
-      store.patch({ connecting: false, error: messageOf(err) });
+      overlay.patch({ connecting: false, error: messageOf(err) });
       throw err;
     }
-    store.set({ ...DISCONNECTED_STATUS });
+    overlay.patch({ connecting: false, error: null });
   }
 
-  return {
-    getStatus,
-    subscribe,
-    refresh,
+  const handle = {
     connect,
     disconnect,
     // Non-interactive fast path: if the cached token still has enough runway
@@ -167,4 +194,8 @@ export function createDriveAuth({
     // `drive.activate()` and returns its teardown fn unchanged.
     activate: () => drive.activate(),
   };
+
+  (handle as any)[INTERNAL_STATUS] = { getMergedSnapshot, subscribeMerged };
+
+  return handle as DriveAuthHandle;
 }

@@ -5,12 +5,21 @@
 // internals are stubbed; the only test doubles are at the drive-sync facade
 // boundary (`drive.project(...)`) where a case must force a rejection or count
 // facade calls.
+//
+// `auth.ts` no longer exposes public `getStatus()`/`subscribe()`/`refresh()`.
+// Status is read either through the `useDriveConnection(auth)` React hook
+// (rendered here via `@testing-library/react`'s `renderHook`) or directly via
+// `h.drive.project(id).getConnectionSync()` (the real drive-sync facade).
+// `tokenValid` isn't part of the hook's output, so cases needing it reach for
+// the internal `INTERNAL_STATUS` symbol's `getMergedSnapshot()` directly.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { NeedsReauthError } from '@open-webapp/drive-sync'
-import { createDriveAuth } from '../auth.js'
+import { createDriveAuth, INTERNAL_STATUS } from '../auth.js'
+import { useDriveConnection } from '../useDriveConnection.js'
 import { makeHarness } from './harness.js'
-import type { DriveAuthHandle } from '../types.js'
+import type { DriveAuthHandle, DriveAuthStatus } from '../types.js'
 
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const USERINFO_SCOPE = 'https://www.googleapis.com/auth/userinfo.email'
@@ -23,12 +32,35 @@ function goodResponse(over: Record<string, unknown> = {}) {
   return { access_token: `tok-${seq}`, expires_in: 3600, scope: FULL_SCOPE, ...over }
 }
 
+/** A couple of macrotask ticks — enough for fire-and-forget re-reads/lazy hydrate kicks to land. */
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/** Reads the internal merged snapshot off a handle, bypassing the hook. */
+function mergedSnapshot(handle: DriveAuthHandle): DriveAuthStatus {
+  return (handle as any)[INTERNAL_STATUS].getMergedSnapshot()
+}
+
+/**
+ * `getMergedSnapshot()` only recomputes on its very first call (lazy) or when
+ * a live `subscribeMerged` listener's notify fires. A handle with no active
+ * subscription returns a stale cached snapshot forever after that first
+ * call, so any test that reads `mergedSnapshot()` more than once across a
+ * state change must keep a listener attached — this does that.
+ */
+function keepStatusLive(handle: DriveAuthHandle): () => void {
+  return (handle as any)[INTERNAL_STATUS].subscribeMerged(() => {})
+}
+
 let h: ReturnType<typeof makeHarness>
 let auth: DriveAuthHandle
 
 beforeEach(() => {
   h = makeHarness()
   auth = createDriveAuth({ drive: h.drive, projectId: h.projectId })
+  keepStatusLive(auth)
 })
 
 afterEach(() => {
@@ -40,35 +72,43 @@ afterEach(() => {
 })
 
 describe('createDriveAuth handle', () => {
-  it('1. refresh() with no stored connection -> all-false snapshot, no popup', async () => {
-    const status = await auth.refresh()
+  it('1. no stored connection -> all-false status via the hook, no popup', async () => {
+    const { result } = renderHook(() => useDriveConnection(auth))
 
-    expect(status).toMatchObject({
-      connected: false,
-      tokenValid: false,
-      needsReauth: false,
-      email: null,
-      expiresAt: null,
+    await waitFor(() => {
+      expect(result.current).toMatchObject({
+        connected: false,
+        needsReauth: false,
+        email: null,
+      })
     })
-    expect(auth.getStatus()).toMatchObject({ connected: false, email: null, expiresAt: null })
     expect(h.gisFake.calls.length).toBe(0)
   })
 
-  it('2. refresh() after a seeded connection -> connected, and subscribers notified exactly once', async () => {
+  it('2. a seeded connection is visible via the hook, and the hook re-renders exactly once for it', async () => {
     const expectedExpiry = Date.now() + 3_600_000
-    await h.seedConnection({ email: 'a@b.com', expiresAt: expectedExpiry })
 
-    const listener = vi.fn()
-    auth.subscribe(listener)
+    const { result, rerender } = renderHook(() => useDriveConnection(auth))
+    await waitFor(() => expect(result.current.connected).toBe(false))
 
-    const status = await auth.refresh()
+    // seedConnection drives a real connect() on a DIFFERENT handle path (the
+    // facade directly, not through `auth`), which notifies the hook's
+    // subscription outside of a React event handler — wrap it in `act` so
+    // React flushes the resulting state update synchronously.
+    await act(async () => {
+      await h.seedConnection({ email: 'a@b.com', expiresAt: expectedExpiry })
+    })
+    await waitFor(() => expect(result.current.connected).toBe(true))
 
-    expect(status.connected).toBe(true)
-    expect(status.email).toBe('a@b.com')
-    expect(status.needsReauth).toBe(false)
-    expect(status.tokenValid).toBe(true)
-    expect(Math.abs((status.expiresAt ?? 0) - expectedExpiry)).toBeLessThan(2000)
-    expect(listener).toHaveBeenCalledTimes(1)
+    expect(result.current.email).toBe('a@b.com')
+    expect(result.current.needsReauth).toBe(false)
+
+    const conn = h.drive.project(h.projectId).getConnectionSync()
+    expect(conn).not.toBeNull()
+    expect(Math.abs((conn?.expiresAt ?? 0) - expectedExpiry)).toBeLessThan(2000)
+
+    rerender()
+    expect(result.current.connected).toBe(true)
   })
 
   it('3. ensureFresh() token-runway boundary: interactive connect iff the cached token is not usable', async () => {
@@ -146,7 +186,7 @@ describe('createDriveAuth handle', () => {
 
     await expect(auth.connect()).rejects.toThrow(/access_denied/)
 
-    const failed = auth.getStatus()
+    const failed = mergedSnapshot(auth)
     expect(failed.connected).toBe(false)
     expect(typeof failed.error).toBe('string')
     expect(failed.error).toBeTruthy()
@@ -157,8 +197,8 @@ describe('createDriveAuth handle', () => {
     const conn = await auth.connect()
     expect(conn).toBeTruthy()
     expect(h.gisFake.calls.length).toBe(2)
-    expect(auth.getStatus().connected).toBe(true)
-    expect(auth.getStatus().error).toBeNull()
+    expect(mergedSnapshot(auth).connected).toBe(true)
+    expect(mergedSnapshot(auth).error).toBeNull()
   })
 
   it('7. connect() rejects with "Google auth timed out" after 10s of GIS silence', async () => {
@@ -177,7 +217,7 @@ describe('createDriveAuth handle', () => {
       expect(err).toBeInstanceOf(Error)
       expect((err as Error).message).toBe('Google auth timed out')
 
-      const status = auth.getStatus()
+      const status = mergedSnapshot(auth)
       expect(status.connected).toBe(false)
       expect(status.error).toBe('Google auth timed out')
     } finally {
@@ -195,8 +235,8 @@ describe('createDriveAuth handle', () => {
       beforeInteractive: wrap,
     })
     await h.seedConnection({ email: 'x@y.com', expiresAt: Date.now() + 3_600_000 })
+    await flush()
 
-    await a.refresh()
     expect(wrap).toHaveBeenCalledTimes(0)
 
     // Cached token still has runway -> fast path, no wrap.
@@ -214,11 +254,12 @@ describe('createDriveAuth handle', () => {
   it('9. disconnect() clears status on success; keeps the connection on failure', async () => {
     // Success path.
     await h.seedConnection({ email: 'z@z.com', expiresAt: Date.now() + 3_600_000 })
-    await auth.refresh()
-    expect(auth.getStatus().connected).toBe(true)
+    await flush()
+    expect(h.drive.project(h.projectId).getConnectionSync()).not.toBeNull()
+    expect(mergedSnapshot(auth).connected).toBe(true)
 
     await auth.disconnect()
-    expect(auth.getStatus()).toMatchObject({ connected: false, email: null, connecting: false, error: null })
+    expect(mergedSnapshot(auth)).toMatchObject({ connected: false, email: null, connecting: false, error: null })
 
     // Failure path — force `project().disconnect()` to reject at the drive-sync
     // facade boundary (no internals stubbed).
@@ -230,13 +271,14 @@ describe('createDriveAuth handle', () => {
     }) as typeof h.drive.project
 
     const a = createDriveAuth({ drive: h.drive, projectId: h.projectId })
+    keepStatusLive(a)
     await h.seedConnection({ email: 'z@z.com', expiresAt: Date.now() + 3_600_000 })
-    await a.refresh()
-    expect(a.getStatus().connected).toBe(true)
+    await flush()
+    expect(mergedSnapshot(a).connected).toBe(true)
 
     await expect(a.disconnect()).rejects.toBe(failure)
 
-    const after = a.getStatus()
+    const after = mergedSnapshot(a)
     expect(after.error).toBe('revoke failed')
     expect(after.connecting).toBe(false)
     expect(after.connected).toBe(true)
@@ -246,14 +288,11 @@ describe('createDriveAuth handle', () => {
   it('10. activate() forwards to drive.activate(); no other handle method calls it', async () => {
     const spy = vi.spyOn(h.drive, 'activate')
 
-    auth.getStatus()
-    const unsub = auth.subscribe(() => {})
-    await auth.refresh()
+    mergedSnapshot(auth)
     h.gisFake.queueResponse(goodResponse())
     await auth.connect()
     await auth.ensureFresh()
     await auth.disconnect()
-    unsub()
 
     expect(spy).not.toHaveBeenCalled()
 
@@ -283,7 +322,7 @@ describe('createDriveAuth handle', () => {
     expect(alertSpy).not.toHaveBeenCalled()
   })
 
-  it('12. drive-sync popup_closed error propagates unchanged; no extra getConnection() retry', async () => {
+  it('12. drive-sync popup_closed error propagates unchanged; no extra facade getConnection() call', async () => {
     // Wrap the facade to count `getConnection()` calls without stubbing internals.
     let getConnectionCalls = 0
     const realProject = h.drive.project.bind(h.drive)
@@ -321,8 +360,8 @@ describe('createDriveAuth handle', () => {
     expect((err as NeedsReauthError).name).toBe('NeedsReauthError')
     expect((err as NeedsReauthError).reason).toBe('popup_closed')
     expect((err as Error).message).toContain('closed before completing')
-    expect(a.getStatus().error).toBe((err as Error).message)
-    expect(a.getStatus().connected).toBe(false)
+    expect(mergedSnapshot(a).error).toBe((err as Error).message)
+    expect(mergedSnapshot(a).connected).toBe(false)
 
     const failPathGetConnectionCalls = getConnectionCalls
 
@@ -333,12 +372,78 @@ describe('createDriveAuth handle', () => {
     expect(conn).toBeTruthy()
     const successPathGetConnectionCalls = getConnectionCalls
 
-    // Failure path issues NO facade getConnection() call; success path issues
-    // exactly one (from runConnect()'s post-success refresh()).
+    // `connect()` no longer calls `refresh()` (removed): drive-sync's internal
+    // post-connect re-read goes through `getConnectionImpl` directly, NOT the
+    // facade's public `getConnection()`. Neither path issues a facade
+    // `getConnection()` call any more.
     expect(failPathGetConnectionCalls).toBe(0)
-    expect(successPathGetConnectionCalls).toBe(1)
-    expect(failPathGetConnectionCalls).toBeLessThanOrEqual(successPathGetConnectionCalls)
+    expect(successPathGetConnectionCalls).toBe(0)
   }, 15_000)
+
+  it('13. handle has no refresh/getStatus/subscribe methods', () => {
+    expect((auth as any).refresh).toBeUndefined()
+    expect((auth as any).getStatus).toBeUndefined()
+    expect((auth as any).subscribe).toBeUndefined()
+  })
+
+  it("14. hook's merged snapshot returns a stable reference across renders with no state change", async () => {
+    // The hook's own return value is a fresh literal every render (by
+    // design — see useDriveConnection.ts), so reference stability is
+    // asserted on the underlying merged snapshot `useSyncExternalStore`
+    // actually reads (`getMergedSnapshot()`), which is what gates whether
+    // React treats the store as "changed" and re-renders at all.
+    const { result, rerender } = renderHook(() => useDriveConnection(auth))
+    await waitFor(() => expect(result.current.connected).toBe(false))
+
+    const snapshotBefore = mergedSnapshot(auth)
+    const fieldsBefore = result.current
+    rerender()
+    const snapshotAfter = mergedSnapshot(auth)
+
+    expect(snapshotAfter).toBe(snapshotBefore)
+    expect(result.current).toEqual(fieldsBefore)
+  })
+
+  it('15. hook fans in drive-sync connection changes made outside of auth', async () => {
+    await h.seedConnection({ email: 'fan@in.com' })
+
+    const { result } = renderHook(() => useDriveConnection(auth))
+    await waitFor(() => expect(result.current.connected).toBe(true))
+    expect(result.current.email).toBe('fan@in.com')
+
+    // Bypass `auth` entirely — disconnect via the raw drive-sync facade.
+    await act(async () => {
+      await h.drive.project(h.projectId).disconnect()
+    })
+
+    await waitFor(() => expect(result.current.connected).toBe(false))
+    expect(result.current.email).toBeNull()
+  })
+
+  it('16. tokenValid on the internal merged snapshot is frozen between notifies', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const bufferMs = 5 * 60 * 1000
+      const now = Date.now()
+      await h.seedConnection({ expiresAt: now + bufferMs + 1000 })
+
+      // First read hydrates + caches the snapshot: token has runway -> valid.
+      expect(mergedSnapshot(auth).tokenValid).toBe(true)
+
+      // Advance real time past the buffer with NO intervening
+      // connect/disconnect/warm-up/broadcast: the cached snapshot must not
+      // recompute on a bare read.
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+      expect(mergedSnapshot(auth).tokenValid).toBe(true)
+
+      // Force a notify: disconnect() then reconnect flips overlay/connection
+      // state, which recomputes the merged snapshot from scratch.
+      await auth.disconnect()
+      expect(mergedSnapshot(auth).tokenValid).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('barrel exports', () => {
