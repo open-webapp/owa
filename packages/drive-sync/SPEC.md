@@ -48,7 +48,7 @@ dispose();
 
 `createDriveSync()` itself attaches no listeners and makes no network calls. Every Drive-op call site accepts an optional `{ interactive?: boolean }` (default `false`) and resolves its own token internally — no caller ever threads a token or a `projectId` string into an HTTP call by hand.
 
-Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`, plus `getConnectionSync`/`subscribeConnection`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`).
+Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`/`CalendarHandle`, plus `getConnectionSync`/`subscribeConnection`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `calendar.ts` (read-only Calendar events — see §2a), `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions` incl. `additionalScopes`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`, `CalendarEvent`, `CalendarEventDateTime`, `ListEventsOptions`).
 
 `getAccessToken()` is the one deliberate exception to `Connection` never exposing secret material (types.ts): it exists solely so an app can feed the token to Google Picker (`setOAuthToken()`), which runs outside this library's control and has no other way to read it. Reuses a cached token while it has more than 5 minutes left; otherwise acquires one (interactive by default, since callers use this to drive a UI the user is actively interacting with).
 
@@ -129,6 +129,41 @@ One behavioral consequence worth calling out: because the broadcast handler re-r
 42. **`list()` passes through `thumbnailLink` + `imageMediaMetadata`, unfiltered and verbatim** — `files.ts`'s `list()` extends the same `fields` mask touched in #36's `modifiedTime` change to also request `thumbnailLink` and `imageMediaMetadata(width,height,rotation)`; `FileRef` (`types.ts`) gains three optional fields — `mimeType?` (already fetched, previously just untyped), `thumbnailLink?`, and `imageMediaMetadata?: { width?; height?; rotation? }` — all `fields`-gated and may be absent on older or partial responses. `list()` stays unfiltered: it returns every file of any MIME type with no `image/` check and no opt-in flag, and `thumbnailLink` is passed through exactly as Drive returns it — no blob fetch, no URL rewrite, no `=s220` size munging, and no `files.thumbnail()` helper. Caveat: `thumbnailLink` is a short-lived URL (good for only ~hours) that can require the browser to be carrying Google auth context for the file's owning account, so a cross-origin bare `<img src>` may 403; rendering is the consuming app's responsibility, and it can fall back to `getAccessToken()` + fetch-to-blob itself. (Label is `42` though this is only the 41st entry — the section carries a duplicate `7.` label and a merged `25–27.` entry, so the labels have always run one ahead of the item count; no existing entry is renumbered.)
 
 43. **Synchronous connection snapshot, per project** — `index.ts`'s `ProjectHandle` gains `getConnectionSync(): Connection | null` and `subscribeConnection(cb): () => void`, backed by a new `connectionSnapshot.ts` (`createConnectionSnapshotStore`) held per `projectId` in the `snapshotStores` Map alongside `trackedProjectIds`. The store shallow-compares `email`/`needsReauth`/`expiresAt` so its reference stays stable across no-op re-reads (`useSyncExternalStore`-friendly). It is populated lazily on first access, kept warm by the same warm-up/broadcast/`activate()` paths that already existed, and — the one synchronous-after-await guarantee in the package — re-read and `await`ed to completion inside `connect()`/`disconnect()` before those calls resolve. A side effect: cross-tab `logout` broadcasts now push a visible state change to `subscribeConnection()` listeners, which the async-only `getConnection()` never did.
+
+## 2a. Configurable scopes and read-only Calendar events (v0.9.0)
+
+**`additionalScopes` option.** `DriveSyncOptions.additionalScopes?: string[]` (`types.ts`) lets a consumer request extra OAuth scopes alongside the library's own Drive scopes (`REQUIRED_SCOPES` — `drive.file` + `userinfo.email`, `files.ts`). `createDriveSync` computes `EFFECTIVE_SCOPES = [...REQUIRED_SCOPES, ...(options.additionalScopes ?? [])]` once, and threads that single array into every scope-consuming call site: `connect()`, `getConnection()`, `getAccessToken()`, `pickFile()`, the connection-snapshot re-read, `refresh.ts`'s `warmUpIfNeeded` (via a new `scopes` field on `ActivateOptions`), and every `files.ts`/`permissions.ts` call (via a new `requiredScopes: string[]` field on their shared `BaseCallOptions`, populated from `index.ts`'s per-project `base` object). **Backward compatibility guarantee:** when `additionalScopes` is omitted or empty, `EFFECTIVE_SCOPES` is referentially the same value set as the old bare `REQUIRED_SCOPES` constant, so every request this library makes is byte-identical to before this option existed. `connection.ts`'s existing scope-coverage check (`needsReauth`, §"resolved decisions" #19-ish / `connection.ts:233`) means a token missing a newly-added scope is genuinely treated as needing reauth, not silently ignored.
+
+**Calendar capability.** `ProjectHandle.calendar.listEvents({ timeMin, timeMax }, callOpts?)` (new `calendar.ts`, wired onto `ProjectHandle` in `index.ts` alongside `files`/`permissions`, sharing the same per-project `base` object and therefore the same `EFFECTIVE_SCOPES`) issues `GET https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=...&timeMax=...&singleEvents=true&orderBy=startTime` through the same `driveFetch` (`http.ts`) every Drive call uses — `driveFetch` is generic over the request URL/host and only hardcodes Drive-specific behavior in its error-message text, so it needed no changes to serve a non-Drive Google API. The library hardcodes no date range; the caller supplies `timeMin`/`timeMax` as ISO 8601 strings. Read-only: no create/update/delete Calendar operation exists in this package. Every event Google returns in range is mapped and returned unfiltered, in Google's own `orderBy: startTime` order — no RSVP filtering or declined-event dropping happens in the library; that is an app-side decision.
+
+Like every `files.*`/`permissions.*` call, `listEvents` defaults `interactive` to `false` (NOT `getAccessToken()`'s interactive-by-default exception) — a background calendar poll never triggers a consent popup. Pass `{ interactive: true }` to allow one.
+
+**Normalized `CalendarEvent` shape** (`types.ts`):
+
+```ts
+interface CalendarEventDateTime {
+  dateTime?: string; // present for timed events
+  date?: string;     // present for all-day events (YYYY-MM-DD), mutually exclusive with dateTime
+  timeZone?: string;
+}
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: CalendarEventDateTime;
+  end: CalendarEventDateTime;
+  isAllDay: boolean; // true iff start.date is present with no start.dateTime
+  selfResponseStatus: 'accepted' | 'tentative' | 'needsAction' | 'declined';
+  joinUrl: string | null;
+  organizer: { displayName?: string; email?: string; self: boolean };
+  htmlLink: string;
+}
+```
+
+**`selfResponseStatus` derivation** (`calendar.ts`'s `deriveSelfResponseStatus`): if the raw event has an `attendees` array, find the entry with `self === true` and pass its `responseStatus` through verbatim (Google's enum already matches this type; defaults to `'needsAction'` if a non-empty `attendees` array somehow has no self entry). If there is no `attendees` array at all (a self-only event, or an organizer with nothing to respond to), the status is `'accepted'`.
+
+**`joinUrl` derivation** (`calendar.ts`'s `extractJoinUrl`), in precedence order: (1) `event.hangoutLink` if present; (2) the first `event.conferenceData.entryPoints` entry with `entryPointType === 'video'`, its `uri`; (3) a best-effort regex scan, `event.location` then `event.description`, for the first URL matching `zoom.us`, `meet.google.com`, or `teams.microsoft.com` (may false-negative on oddly formatted text — accepted, since the two structured sources above cover the common case); (4) `null` if nothing matches.
+
+**All-day events.** `isAllDay = Boolean(raw.start?.date && !raw.start?.dateTime)`. The mapper (`calendar.ts`'s `mapEvent`) reads `start.date`/`end.date` when present and never assumes `start.dateTime` exists — an all-day event's `dateTime` field stays `undefined` on the normalized `CalendarEvent`, it is never coerced to `''` or allowed to throw.
 
 ## 3. Storage layout
 

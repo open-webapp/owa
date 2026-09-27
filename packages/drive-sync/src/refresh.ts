@@ -3,7 +3,6 @@ import { getConnection, refreshSilently } from './connection.js';
 import { getToken } from './storage.js';
 import { acquireToken } from './token.js';
 import { refreshEnvelope } from './envelope.js';
-import { REQUIRED_SCOPES } from './files.js';
 
 export const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -11,6 +10,8 @@ export interface ActivateOptions {
   appId: string;
   projectId: string;
   clientId: string;
+  /** Effective scope set (base scopes plus any `additionalScopes`) to warm up. */
+  scopes: string[];
   /**
    * Resolves the connected account's email from a fresh access token. When
    * supplied, the warm-up's non-interactive refresh goes through
@@ -45,7 +46,7 @@ export async function warmUpIfNeeded(opts: ActivateOptions): Promise<void> {
     const conn = await getConnection({
       appId: opts.appId,
       projectId: opts.projectId,
-      requiredScopes: REQUIRED_SCOPES,
+      requiredScopes: opts.scopes,
     });
     if (!conn) {
       // No connection at all -> no warm-up.
@@ -70,7 +71,7 @@ export async function warmUpIfNeeded(opts: ActivateOptions): Promise<void> {
         appId: opts.appId,
         projectId: opts.projectId,
         clientId: opts.clientId,
-        scopes: REQUIRED_SCOPES,
+        scopes: opts.scopes,
         expectedEmail: conn.email,
         fetchEmail: opts.fetchEmail,
         logger: opts.logger,
@@ -80,7 +81,7 @@ export async function warmUpIfNeeded(opts: ActivateOptions): Promise<void> {
         appId: opts.appId,
         projectId: opts.projectId,
         clientId: opts.clientId,
-        scopes: REQUIRED_SCOPES,
+        scopes: opts.scopes,
         interactive: false,
         hint: conn.email,
         logger: opts.logger,

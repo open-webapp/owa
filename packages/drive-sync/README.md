@@ -17,6 +17,9 @@ const drive = createDriveSync({
   appId: 'my-app',
   clientId: 'xxx.apps.googleusercontent.com',
   folderPath: ['MyApp', 'Data'],
+  // additionalScopes?: string[] — request extra OAuth scopes alongside the
+  // library's own Drive scopes. Omitted/empty = identical behavior to before
+  // this option existed.
 })
 
 const dispose = drive.activate()
@@ -37,6 +40,28 @@ const ref = await p.files.update(fileId, {
   mimeType: 'application/json',
 })
 ```
+
+### Calendar events (read-only)
+
+Reuses the same connected Google account — no second OAuth flow — as long as
+`additionalScopes: ['https://www.googleapis.com/auth/calendar.readonly']` was
+passed to `createDriveSync`. The caller supplies the time window; this
+library hardcodes no date range:
+
+```ts
+const events = await p.calendar.listEvents({
+  timeMin: new Date(Date.now() - 7 * 86400_000).toISOString(),
+  timeMax: new Date(Date.now() + 30 * 86400_000).toISOString(),
+})
+```
+
+Read-only (no create/update/delete). Non-interactive by default, like
+`p.files.*` — a background poll never pops a consent screen; pass
+`{ interactive: true }` to allow one. Every event in range is returned,
+unfiltered — callers decide what to show/hide, including declined events.
+Each `CalendarEvent` includes `selfResponseStatus`, a best-effort `joinUrl`,
+and `isAllDay`-aware `start`/`end` (an all-day event has `date` set and
+`dateTime` left `undefined`).
 
 ### Synchronous connection snapshot
 

@@ -249,6 +249,7 @@ describe('T13 · call site: refresh.ts warmUpIfNeeded', () => {
       appId,
       projectId,
       clientId: 'client-1',
+      scopes: REQUIRED_SCOPES,
       tokenExchangeUrl: TOKEN_EXCHANGE_URL,
     })
 
@@ -278,7 +279,7 @@ describe('T13 · call site: refresh.ts warmUpIfNeeded', () => {
     })
 
     // No tokenExchangeUrl and no fetchEmail -> legacy acquireToken path.
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     expect(gisFake.calls).toHaveLength(1)
     expect(gisFake.calls[0]).toMatchObject({ prompt: 'none' })
@@ -303,6 +304,7 @@ describe('T13 · call site: refresh.ts warmUpIfNeeded', () => {
         appId,
         projectId,
         clientId: 'client-1',
+        scopes: REQUIRED_SCOPES,
         tokenExchangeUrl: TOKEN_EXCHANGE_URL,
         logger,
       })

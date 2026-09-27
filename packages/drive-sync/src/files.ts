@@ -28,6 +28,11 @@ interface BaseCallOptions {
    * through `refreshEnvelope` (see http.ts). Absent for the legacy GIS path.
    */
   tokenExchangeUrl?: string;
+  /**
+   * Scopes required for this call, threaded in by index.ts as the caller's
+   * effective scope set (`REQUIRED_SCOPES` plus any `additionalScopes`).
+   */
+  requiredScopes: string[];
 }
 
 export interface ReadOptions extends BaseCallOptions {
@@ -51,7 +56,7 @@ async function fetchRemoteVersion(
       )}`,
       method: 'GET',
       interactive: opts.interactive,
-      requiredScopes: REQUIRED_SCOPES,
+      requiredScopes: opts.requiredScopes,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
       tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -105,7 +110,7 @@ export async function read(opts: ReadOptions): Promise<string | Blob | null> {
       url: `${DRIVE_BASE}/files/${encodeURIComponent(opts.fileId)}?alt=media`,
       method: 'GET',
       interactive: opts.interactive,
-      requiredScopes: REQUIRED_SCOPES,
+      requiredScopes: opts.requiredScopes,
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
       tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -146,7 +151,7 @@ export async function remove(opts: RemoveOptions): Promise<void> {
     url: `${DRIVE_BASE}/files/${encodeURIComponent(opts.fileId)}`,
     method: 'DELETE',
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -226,7 +231,7 @@ async function updateContent(
     headers: { 'Content-Type': opts.mimeType },
     body: opts.content,
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -275,6 +280,7 @@ export async function write(opts: WriteOptions): Promise<FileRef> {
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
       tokenExchangeUrl: opts.tokenExchangeUrl,
+      requiredScopes: opts.requiredScopes,
     });
     if (existing.length > 0) {
       return updateContent(opts, existing[0].id, existing[0].version);
@@ -318,7 +324,7 @@ export async function write(opts: WriteOptions): Promise<FileRef> {
     headers: multipartContentType ? { 'Content-Type': multipartContentType } : undefined,
     body: multipartBody,
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -414,7 +420,7 @@ export async function list(opts: ListOptions): Promise<FileRef[]> {
     url,
     method: 'GET',
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -447,7 +453,7 @@ async function createFolder(
       parents: opts.parentId ? [opts.parentId] : undefined,
     }),
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -484,6 +490,7 @@ export async function ensureFolderPath(opts: EnsureFolderPathOptions): Promise<s
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
       tokenExchangeUrl: opts.tokenExchangeUrl,
+      requiredScopes: opts.requiredScopes,
       folderId: parentId,
       mimeType: FOLDER_MIME_TYPE,
       nameEquals: name,
@@ -502,6 +509,7 @@ export async function ensureFolderPath(opts: EnsureFolderPathOptions): Promise<s
       logger: opts.logger,
       fetchEmail: opts.fetchEmail,
       tokenExchangeUrl: opts.tokenExchangeUrl,
+      requiredScopes: opts.requiredScopes,
       name,
       parentId,
     });

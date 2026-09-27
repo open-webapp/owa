@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDriveSync } from '../index.js'
 import { warmUpIfNeeded } from '../refresh.js'
+import { REQUIRED_SCOPES } from '../files.js'
 import { setConn, setToken, setEnvelope, getToken } from '../storage.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 import { createTokenExchangeFake, type TokenExchangeFake } from '../testing/index.js'
@@ -195,6 +196,7 @@ describe('warm-up in envelope mode (T9)', () => {
         appId,
         projectId,
         clientId: 'client-1',
+        scopes: REQUIRED_SCOPES,
         tokenExchangeUrl: TOKEN_EXCHANGE_URL,
         logger,
       })
@@ -228,7 +230,7 @@ describe('warm-up in envelope mode (T9)', () => {
     })
 
     // No tokenExchangeUrl -> falls through to the legacy acquireToken path.
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     // Assertion copied from refresh.test.ts (test case 19).
     expect(gisFake.calls.length).toBe(1)
