@@ -11,6 +11,11 @@ export interface DriveSyncOptions {
    * the legacy implicit flow is used unchanged.
    */
   tokenExchangeUrl?: string;
+  /**
+   * Extra OAuth scopes requested alongside the library's own Drive scopes.
+   * Empty/omitted = identical behavior to before this option existed.
+   */
+  additionalScopes?: string[];
 }
 
 /**
@@ -129,4 +134,33 @@ export interface PickedFile {
 export interface CallOptions {
   /** Whether an interactive (popup/redirect) auth flow may be triggered. Defaults to false. */
   interactive?: boolean;
+}
+
+/** A Calendar event's start/end. Exactly one of `dateTime`/`date` is present. */
+export interface CalendarEventDateTime {
+  /** Present for timed events. */
+  dateTime?: string;
+  /** Present for all-day events (YYYY-MM-DD); mutually exclusive with `dateTime`. */
+  date?: string;
+  timeZone?: string;
+}
+
+/** Normalized read-only representation of a Google Calendar event. */
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: CalendarEventDateTime;
+  end: CalendarEventDateTime;
+  /** True iff `start.date` is present with no `start.dateTime`. */
+  isAllDay: boolean;
+  selfResponseStatus: 'accepted' | 'tentative' | 'needsAction' | 'declined';
+  joinUrl: string | null;
+  organizer: { displayName?: string; email?: string; self: boolean };
+  htmlLink: string;
+}
+
+/** Options for `ProjectHandle.calendar.listEvents()`. Caller supplies the time window. */
+export interface ListEventsOptions {
+  timeMin: string;
+  timeMax: string;
 }

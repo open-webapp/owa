@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDriveSync } from '../index.js'
 import { warmUpIfNeeded } from '../refresh.js'
+import { REQUIRED_SCOPES } from '../files.js'
 import { setConn, setToken } from '../storage.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 import type { StoredToken } from '../types.js'
@@ -123,7 +124,7 @@ describe('warmUpIfNeeded refresh guard (test case 19)', () => {
   it('no connection at all -> no warm-up (zero GIS calls)', async () => {
     const { appId, projectId } = freshIds()
 
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     expect(gisFake.calls.length).toBe(0)
   })
@@ -144,7 +145,7 @@ describe('warmUpIfNeeded refresh guard (test case 19)', () => {
     }
     await setToken(appId, projectId, freshToken)
 
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     expect(gisFake.calls.length).toBe(0)
   })
@@ -171,7 +172,7 @@ describe('warmUpIfNeeded refresh guard (test case 19)', () => {
       scope: SCOPES.join(' '),
     })
 
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     expect(gisFake.calls.length).toBe(1)
     expect(gisFake.calls[0]).toMatchObject({ prompt: 'none' })
@@ -193,7 +194,7 @@ describe('warmUpIfNeeded refresh guard (test case 19)', () => {
       scope: SCOPES.join(' '),
     })
 
-    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1' })
+    await warmUpIfNeeded({ appId, projectId, clientId: 'client-1', scopes: REQUIRED_SCOPES })
 
     expect(gisFake.calls.length).toBe(1)
     expect(gisFake.calls[0]).toMatchObject({ prompt: 'none' })

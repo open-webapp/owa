@@ -1,7 +1,6 @@
 import type { Logger } from './logger.js';
 import type { DrivePermission } from './types.js';
 import { driveFetch } from './http.js';
-import { REQUIRED_SCOPES } from './files.js';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 
@@ -18,6 +17,11 @@ interface BaseCallOptions {
    * through `refreshEnvelope` (see http.ts). Absent for the legacy GIS path.
    */
   tokenExchangeUrl?: string;
+  /**
+   * Scopes required for this call, threaded in by index.ts as the caller's
+   * effective scope set (`REQUIRED_SCOPES` plus any `additionalScopes`).
+   */
+  requiredScopes: string[];
 }
 
 export interface ListPermissionsOptions extends BaseCallOptions {
@@ -34,7 +38,7 @@ export async function list(opts: ListPermissionsOptions): Promise<DrivePermissio
     )}`,
     method: 'GET',
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -68,7 +72,7 @@ export async function grant(opts: GrantPermissionOptions): Promise<DrivePermissi
       emailAddress: opts.type === 'user' ? opts.emailAddress : undefined,
     }),
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -94,7 +98,7 @@ export async function update(opts: UpdatePermissionOptions): Promise<DrivePermis
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role: opts.role }),
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,
@@ -117,7 +121,7 @@ export async function revoke(opts: RevokePermissionOptions): Promise<void> {
     )}`,
     method: 'DELETE',
     interactive: opts.interactive,
-    requiredScopes: REQUIRED_SCOPES,
+    requiredScopes: opts.requiredScopes,
     logger: opts.logger,
     fetchEmail: opts.fetchEmail,
     tokenExchangeUrl: opts.tokenExchangeUrl,

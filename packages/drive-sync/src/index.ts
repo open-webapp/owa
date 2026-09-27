@@ -1,11 +1,12 @@
 import type { Logger } from './logger.js';
-import type { CallOptions, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, PickFileOptions, PickedFile } from './types.js';
+import type { CallOptions, CalendarEvent, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
 import * as filesImpl from './files.js';
 import * as permissionsImpl from './permissions.js';
 import * as pickerImpl from './picker.js';
+import * as calendarImpl from './calendar.js';
 import { warmUpIfNeeded } from './refresh.js';
 import { REQUIRED_SCOPES } from './files.js';
 import { createConnectionSnapshotStore } from './connectionSnapshot.js';
@@ -13,7 +14,7 @@ import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload, CalendarEvent, CalendarEventDateTime, ListEventsOptions } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -92,6 +93,10 @@ export interface PermissionsHandle {
   revoke(opts: { fileId: string; permissionId: string }, callOpts?: CallOptions): Promise<void>;
 }
 
+export interface CalendarHandle {
+  listEvents(opts: ListEventsOptions, callOpts?: CallOptions): Promise<CalendarEvent[]>;
+}
+
 export interface ProjectHandle {
   connect(): Promise<Connection>;
   getConnection(): Promise<Connection | null>;
@@ -122,6 +127,7 @@ export interface ProjectHandle {
   subscribeConnection(cb: () => void): () => void;
   files: FilesHandle;
   permissions: PermissionsHandle;
+  calendar: CalendarHandle;
 }
 
 export interface DriveSync {
@@ -139,6 +145,12 @@ export interface DriveSync {
 export function createDriveSync(options: DriveSyncOptions): DriveSync {
   const { appId, clientId, folderPath, tokenExchangeUrl } = options;
   const logger: Logger = options.logger ?? noOpLogger;
+  /**
+   * Base Drive scopes plus any caller-requested extras (e.g.
+   * `calendar.readonly`). Omitted `additionalScopes` -> identical to
+   * `REQUIRED_SCOPES` alone, so a consumer that never sets it is unaffected.
+   */
+  const EFFECTIVE_SCOPES = [...REQUIRED_SCOPES, ...(options.additionalScopes ?? [])];
 
   /**
    * Design choice for `.activate()` (T30): the frozen public API's
@@ -181,7 +193,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
     return getConnectionImpl({
       appId,
       projectId,
-      requiredScopes: REQUIRED_SCOPES,
+      requiredScopes: EFFECTIVE_SCOPES,
     })
       .then((conn) => {
         getOrInitStore(projectId).commit(conn);
@@ -238,7 +250,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
 
     const runWarmUps = (): void => {
       for (const projectId of trackedProjectIds) {
-        void warmUpIfNeeded({ appId, projectId, clientId, tokenExchangeUrl, fetchEmail, logger }).then(
+        void warmUpIfNeeded({ appId, projectId, clientId, scopes: EFFECTIVE_SCOPES, tokenExchangeUrl, fetchEmail, logger }).then(
           () => reReadConnection(projectId),
           () => reReadConnection(projectId),
         );
@@ -278,7 +290,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
   function project(projectId: string): ProjectHandle {
     trackProject(projectId);
 
-    const base = { appId, projectId, clientId, tokenExchangeUrl, logger, fetchEmail };
+    const base = { appId, projectId, clientId, tokenExchangeUrl, logger, fetchEmail, requiredScopes: EFFECTIVE_SCOPES };
 
     const files: FilesHandle = {
       list(opts, callOpts) {
@@ -313,13 +325,19 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       },
     };
 
+    const calendar: CalendarHandle = {
+      listEvents(opts, callOpts) {
+        return calendarImpl.listEvents({ ...base, ...opts, interactive: callOpts?.interactive });
+      },
+    };
+
     return {
       async connect() {
         const connection = await connectImpl({
           appId,
           projectId,
           clientId,
-          scopes: REQUIRED_SCOPES,
+          scopes: EFFECTIVE_SCOPES,
           tokenExchangeUrl,
           logger,
           fetchEmail,
@@ -338,7 +356,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
         return getConnectionImpl({
           appId,
           projectId,
-          requiredScopes: REQUIRED_SCOPES,
+          requiredScopes: EFFECTIVE_SCOPES,
         });
       },
       async disconnect() {
@@ -372,7 +390,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           appId,
           projectId,
           clientId,
-          scopes: REQUIRED_SCOPES,
+          scopes: EFFECTIVE_SCOPES,
           interactive: callOpts?.interactive ?? true,
           tokenExchangeUrl,
           logger,
@@ -383,7 +401,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           appId,
           projectId,
           clientId,
-          scopes: REQUIRED_SCOPES,
+          scopes: EFFECTIVE_SCOPES,
           interactive: true,
           tokenExchangeUrl,
           logger,
@@ -415,6 +433,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       },
       files,
       permissions,
+      calendar,
     };
   }
 
