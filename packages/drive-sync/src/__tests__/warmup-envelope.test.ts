@@ -135,6 +135,13 @@ describe('warm-up in envelope mode (T9)', () => {
       // Envelope path was taken, not the legacy GIS silent refresh.
       expect(gisFake.calls.length).toBe(0)
 
+      await waitFor(() =>
+        postSpy.mock.calls.some(
+          ([msg]) =>
+            (msg as { type?: string; projectId?: string })?.type === 'token' &&
+            (msg as { projectId?: string })?.projectId === projectId
+        )
+      )
       const stored = await getToken(appId, projectId)
       expect(stored?.accessToken).toBe(tokenExchange.lastEnvelope?.payload.access_token)
 
