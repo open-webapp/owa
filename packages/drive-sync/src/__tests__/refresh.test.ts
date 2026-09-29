@@ -41,12 +41,14 @@ async function flush(): Promise<void> {
 interface FakeDocument extends EventTarget {
   visibilityState: 'visible' | 'hidden'
   hidden: boolean
+  hasFocus(): boolean
 }
 
 function createFakeDocument(): FakeDocument {
   const target = new EventTarget() as FakeDocument
   target.visibilityState = 'visible'
   target.hidden = false
+  target.hasFocus = () => true
   return target
 }
 
@@ -87,25 +89,146 @@ describe('refresh.ts / index.ts activate() listener wiring (test case 18)', () =
     expect(winAddSpy).not.toHaveBeenCalled()
   })
 
-  it('activate() attaches exactly one visibilitychange + one pageshow listener; the disposer removes exactly those two', () => {
+  it('activate() attaches visibilitychange, pageshow, and focus listeners; the disposer removes all three', () => {
     const sync = createDriveSync({ appId: 'app-18', clientId: 'client-1', folderPath: [] })
 
     const dispose = sync.activate()
 
     expect(docAddSpy).toHaveBeenCalledTimes(1)
     expect(docAddSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
-    expect(winAddSpy).toHaveBeenCalledTimes(1)
+    expect(winAddSpy).toHaveBeenCalledTimes(2)
     expect(winAddSpy).toHaveBeenCalledWith('pageshow', expect.any(Function))
+    expect(winAddSpy).toHaveBeenCalledWith('focus', expect.any(Function))
 
     const [visEventName, visHandler] = docAddSpy.mock.calls[0]!
     const [pageShowEventName, pageShowHandler] = winAddSpy.mock.calls[0]!
+    const [focusEventName, focusHandler] = winAddSpy.mock.calls[1]!
 
     dispose()
 
     expect(docRemoveSpy).toHaveBeenCalledTimes(1)
     expect(docRemoveSpy).toHaveBeenCalledWith(visEventName, visHandler)
-    expect(winRemoveSpy).toHaveBeenCalledTimes(1)
+    expect(winRemoveSpy).toHaveBeenCalledTimes(2)
     expect(winRemoveSpy).toHaveBeenCalledWith(pageShowEventName, pageShowHandler)
+    expect(winRemoveSpy).toHaveBeenCalledWith(focusEventName, focusHandler)
+  })
+})
+
+describe('activate() only warms tracked stale projects in a visible, focused tab', () => {
+  let fakeDocument: FakeDocument
+  let fakeWindow: EventTarget
+  let gisFake: GisFake
+
+  beforeEach(() => {
+    fakeDocument = createFakeDocument()
+    fakeWindow = createFakeWindow()
+    vi.stubGlobal('document', fakeDocument)
+    vi.stubGlobal('window', fakeWindow)
+    gisFake = createGisFake()
+    gisFake.install()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    gisFake.uninstall()
+  })
+
+  async function activateTrackedStaleProject(): Promise<() => void> {
+    const { appId, projectId } = freshIds()
+    await setConn(appId, projectId, {
+      email: 'user@example.com',
+      grantedScopes: SCOPES,
+      connectedAt: Date.now(),
+    })
+    await setToken(appId, projectId, {
+      accessToken: 'about-to-expire',
+      expiresAt: Date.now() + REFRESH_BUFFER_MS - 4 * 60 * 1000,
+      grantedScopes: SCOPES,
+    })
+
+    const sync = createDriveSync({ appId, clientId: 'client-1', folderPath: [] })
+    sync.project(projectId)
+    return sync.activate()
+  }
+
+  it('warms visibly focused projects on visibilitychange with a non-interactive GIS request', async () => {
+    const dispose = await activateTrackedStaleProject()
+    gisFake.queueResponse({ access_token: 'refreshed-token', expires_in: 3600, scope: SCOPES.join(' ') })
+
+    try {
+      fakeDocument.dispatchEvent(new Event('visibilitychange'))
+      await flush()
+
+      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+    } finally {
+      dispose()
+    }
+  })
+
+  it('does not warm on visibilitychange or persisted pageshow while visible but unfocused', async () => {
+    const dispose = await activateTrackedStaleProject()
+    fakeDocument.hasFocus = () => false
+
+    try {
+      fakeDocument.dispatchEvent(new Event('visibilitychange'))
+      fakeWindow.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+      await flush()
+
+      expect(gisFake.calls).toHaveLength(0)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('warms once on later window focus when the visible tab was previously unfocused', async () => {
+    const dispose = await activateTrackedStaleProject()
+    fakeDocument.hasFocus = () => false
+
+    try {
+      fakeDocument.dispatchEvent(new Event('visibilitychange'))
+      fakeWindow.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+      await flush()
+      expect(gisFake.calls).toHaveLength(0)
+
+      gisFake.queueResponse({ access_token: 'refreshed-token', expires_in: 3600, scope: SCOPES.join(' ') })
+      fakeDocument.hasFocus = () => true
+      fakeWindow.dispatchEvent(new Event('focus'))
+      await flush()
+
+      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+    } finally {
+      dispose()
+    }
+  })
+
+  it('does not warm on window focus while hidden', async () => {
+    const dispose = await activateTrackedStaleProject()
+    fakeDocument.visibilityState = 'hidden'
+    fakeDocument.hidden = true
+
+    try {
+      fakeWindow.dispatchEvent(new Event('focus'))
+      await flush()
+
+      expect(gisFake.calls).toHaveLength(0)
+    } finally {
+      dispose()
+    }
+  })
+
+  it('does not fall back to an interactive consent request when silent GIS refresh is rejected', async () => {
+    const dispose = await activateTrackedStaleProject()
+    gisFake.queueResponse({ error: 'access_denied' })
+
+    try {
+      fakeWindow.dispatchEvent(new Event('focus'))
+      await flush()
+
+      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      expect(gisFake.calls).not.toContainEqual(expect.objectContaining({ prompt: 'consent' }))
+    } finally {
+      dispose()
+    }
   })
 })
 

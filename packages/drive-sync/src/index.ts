@@ -159,8 +159,8 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
    * no explicit registry of "active projects" anywhere in the frozen API
    * sketch, so this fills that gap by tracking, in this closure, every
    * projectId that `.project(id)` has ever been called with. `.activate()`
-   * attaches exactly ONE global `visibilitychange`/`pageshow` listener pair
-   * (not one pair per project); when either fires, the handler iterates
+   * attaches exactly ONE global `visibilitychange`/`pageshow`/`focus` listener set
+   * (not one set per project); when any fires, the handler iterates
    * this live Set and runs refresh.ts's `warmUpIfNeeded` check for each
    * tracked project. Because the Set is read at event-fire time (not
    * snapshotted when `.activate()` is called), projects registered via
@@ -248,6 +248,10 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       return disposeBroadcast;
     }
 
+    const canWarmUpNow = (): boolean =>
+      document.visibilityState === 'visible' &&
+      document.hasFocus();
+
     const runWarmUps = (): void => {
       for (const projectId of trackedProjectIds) {
         void warmUpIfNeeded({ appId, projectId, clientId, scopes: EFFECTIVE_SCOPES, tokenExchangeUrl, fetchEmail, logger }).then(
@@ -258,24 +262,31 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
     };
 
     const onVisibilityChange = (): void => {
-      if (document.visibilityState !== 'visible') return;
+      if (!canWarmUpNow()) return;
       runWarmUps();
     };
 
     const onPageShow = (event: Event): void => {
       const persisted = (event as PageTransitionEvent).persisted;
       if (!persisted) return;
-      if (document.hidden) return;
+      if (!canWarmUpNow()) return;
+      runWarmUps();
+    };
+
+    const onFocus = (): void => {
+      if (!canWarmUpNow()) return;
       runWarmUps();
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('focus', onFocus);
 
     return () => {
       disposeBroadcast();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('focus', onFocus);
     };
   }
 
