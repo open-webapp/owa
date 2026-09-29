@@ -328,12 +328,14 @@ describe('T13 · call site: refresh.ts warmUpIfNeeded', () => {
 interface FakeDocument extends EventTarget {
   visibilityState: 'visible' | 'hidden'
   hidden: boolean
+  hasFocus(): boolean
 }
 
 function createFakeDocument(): FakeDocument {
   const target = new EventTarget() as FakeDocument
   target.visibilityState = 'visible'
   target.hidden = false
+  target.hasFocus = () => true
   return target
 }
 
