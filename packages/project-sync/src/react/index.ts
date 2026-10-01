@@ -92,18 +92,21 @@ class ProjectsStore {
   private listeners: Set<() => void> = new Set();
 
   setSnapshot(projects: Project[]): void {
+    // Project API results may be mutated in place by a later rename/remove.
+    // Retain our own values so those mutations remain observable changes.
+    const nextSnapshot = projects.map((project) => ({ ...project }));
     // Check if actually changed
     if (
-      this.snapshot.length !== projects.length ||
+      this.snapshot.length !== nextSnapshot.length ||
       this.snapshot.some(
         (p, i) =>
-          !projects[i] ||
-          p.id !== projects[i].id ||
-          p.name !== projects[i].name ||
-          p.createdAt !== projects[i].createdAt
+          !nextSnapshot[i] ||
+          p.id !== nextSnapshot[i].id ||
+          p.name !== nextSnapshot[i].name ||
+          p.createdAt !== nextSnapshot[i].createdAt
       )
     ) {
-      this.snapshot = projects;
+      this.snapshot = nextSnapshot;
       this.notifyListeners();
     }
   }

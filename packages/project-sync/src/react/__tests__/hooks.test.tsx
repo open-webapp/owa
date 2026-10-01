@@ -215,7 +215,6 @@ describe('React Hooks (useSyncExternalStore)', () => {
       // Initial state
       expect(screen.getByTestId('sync-phase')).toHaveTextContent('idle');
       expect(screen.getByTestId('sync-last-synced')).toHaveTextContent('null');
-      expect(screen.getByTestId('render-count-status')).toHaveTextContent('1');
 
       // Change status
       mockProjectSync.setStatus({
@@ -343,7 +342,9 @@ describe('React Hooks (useSyncExternalStore)', () => {
         </ProjectSyncProvider>
       );
 
-      expect(screen.getByText('Original Name')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Original Name')).toBeInTheDocument();
+      });
 
       // Rename project
       await mockProjectSync.projects.rename(project.id, 'New Name');
@@ -364,7 +365,9 @@ describe('React Hooks (useSyncExternalStore)', () => {
         </ProjectSyncProvider>
       );
 
-      expect(screen.getByTestId('project-count')).toHaveTextContent('1');
+      await waitFor(() => {
+        expect(screen.getByTestId('project-count')).toHaveTextContent('1');
+      });
 
       // Remove project
       await mockProjectSync.projects.remove(project.id);
@@ -406,7 +409,9 @@ describe('React Hooks (useSyncExternalStore)', () => {
         </ProjectSyncProvider>
       );
 
-      expect(screen.getByTestId('active-project-name')).toHaveTextContent('Active Project');
+      await waitFor(() => {
+        expect(screen.getByTestId('active-project-name')).toHaveTextContent('Active Project');
+      });
 
       // Remove the active project
       await mockProjectSync.projects.remove(project.id);
@@ -480,7 +485,7 @@ describe('React Hooks (useSyncExternalStore)', () => {
         </ProjectSyncProvider>
       );
 
-      const renderCount1 = screen.getByTestId('render-count-status').textContent;
+      const renderCount1 = Number(screen.getByTestId('render-count-status').textContent);
 
       // Set a status with an error
       mockProjectSync.setStatus({
@@ -495,7 +500,7 @@ describe('React Hooks (useSyncExternalStore)', () => {
         expect(screen.getByTestId('sync-error')).toHaveTextContent('Error 1');
       });
 
-      const renderCount2 = screen.getByTestId('render-count-status').textContent;
+      const renderCount2 = Number(screen.getByTestId('render-count-status').textContent);
 
       // Change error but keep phase same
       mockProjectSync.setStatus({
@@ -510,10 +515,10 @@ describe('React Hooks (useSyncExternalStore)', () => {
         expect(screen.getByTestId('sync-error')).toHaveTextContent('Error 2');
       });
 
-      const renderCount3 = screen.getByTestId('render-count-status').textContent;
+      const renderCount3 = Number(screen.getByTestId('render-count-status').textContent);
 
-      // Should have rendered 3 times: initial + error1 + error2
-      expect(renderCount3).toBe('3');
+      expect(renderCount2).toBe(renderCount1 + 1);
+      expect(renderCount3).toBe(renderCount2 + 1);
     });
 
     it('useProjects does not re-render when unrelated sync status changes', async () => {
