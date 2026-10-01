@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/project-sync",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "repository": {
     "type": "git",
@@ -33,7 +33,7 @@
     "idb": "^8.0.0"
   },
   "peerDependencies": {
-    "@open-webapp/drive-sync": "^0.9.2",
+    "@open-webapp/drive-sync": "^0.9.3",
     "react": "^18 || ^19"
   },
   "peerDependenciesMeta": {
@@ -42,7 +42,7 @@
     }
   },
   "devDependencies": {
-    "@open-webapp/drive-sync": "^0.9.2",
+    "@open-webapp/drive-sync": "^0.9.3",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

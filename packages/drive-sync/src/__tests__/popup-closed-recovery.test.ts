@@ -6,34 +6,18 @@ import { createGisFake, type GisFake } from '../testing/gisFake.js'
 const SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 let idSeq = 0
-function freshId(prefix: string): string {
+function baseOpts(): AcquireTokenOptions {
   idSeq += 1
-  return `${prefix}-${idSeq}`
-}
-
-function baseOpts(overrides: Partial<AcquireTokenOptions> = {}): AcquireTokenOptions {
   return {
-    appId: freshId('app'),
-    projectId: freshId('proj'),
+    appId: `app-${idSeq}`,
+    projectId: `project-${idSeq}`,
     clientId: 'client-1',
     scopes: SCOPES,
     interactive: true,
-    ...overrides,
   }
 }
 
-/**
- * Regression coverage for the field bug where a COMPLETED Google sign-in was
- * reported to the user as "Google sign-in popup was closed before completing".
- *
- * GIS reports `popup_closed` through error_callback even for flows the user
- * finished, and in the failing environments the success `callback` that would
- * contradict it never arrived at all — so no grace window, however long, could
- * recover it. What distinguishes a completed sign-in from a cancelled one is
- * that the completed one leaves a live grant at Google, which a `prompt: 'none'`
- * request can pick up with no popup.
- */
-describe('popup_closed recovery via a completed-grant probe', () => {
+describe('popup_closed cancellation', () => {
   let gisFake: GisFake
 
   beforeEach(() => {
@@ -45,98 +29,21 @@ describe('popup_closed recovery via a completed-grant probe', () => {
     gisFake.uninstall()
   })
 
-  it('recovers a completed sign-in whose success callback never arrives', async () => {
-    // The bug: GIS fires popup_closed and NEVER delivers a token on the
-    // interactive request, but the consent did complete, so the follow-up
-    // silent request finds a live grant.
+  it('reports cancellation without a silent follow-up request', async () => {
     gisFake.queuePopupError('popup_closed')
-    gisFake.queueResponse({ access_token: 'recovered-token', expires_in: 3600, scope: SCOPES.join(' ') })
 
-    const token = await acquireToken(baseOpts())
+    const error = await acquireToken(baseOpts()).catch((err: unknown) => err)
 
-    expect(token.accessToken).toBe('recovered-token')
-    expect(gisFake.calls.length).toBe(2)
-    // The probe must not open a second popup.
-    expect(gisFake.calls[1].prompt).toBe('none')
-  }, 10_000)
+    expect(error).toBeInstanceOf(NeedsReauthError)
+    expect((error as NeedsReauthError).reason).toBe('popup_closed')
+    expect(gisFake.calls).toHaveLength(1)
+  })
 
-  it('still reports a genuinely cancelled sign-in as popup_closed', async () => {
-    // No grant exists, so every probe attempt fails the way GIS fails a
-    // prompt:'none' request with nothing to satisfy it. The user must see the
-    // original popup_closed error, not the probe's error.
+  it('does not consume a queued silent grant after cancellation', async () => {
     gisFake.queuePopupError('popup_closed')
-    gisFake.queueResponse({ error: 'interaction_required' })
-    gisFake.queueResponse({ error: 'interaction_required' })
-    gisFake.queueResponse({ error: 'interaction_required' })
+    gisFake.queueResponse({ access_token: 'must-not-be-used', expires_in: 3600, scope: SCOPES.join(' ') })
 
-    const settled = await acquireToken(baseOpts()).then(
-      () => 'resolved' as const,
-      (e: unknown) => e
-    )
-
-    expect(settled).toBeInstanceOf(NeedsReauthError)
-    expect((settled as NeedsReauthError).reason).toBe('popup_closed')
-    expect((settled as NeedsReauthError).message).toContain('closed before completing')
-    // 1 interactive request + 3 silent probe attempts.
-    expect(gisFake.calls.length).toBe(4)
-  }, 10_000)
-
-  it('retries the probe when the completed grant is not yet visible on the first attempt', async () => {
-    // The race this fixes: GIS's popup-closed poll fires before the
-    // just-completed consent is durably registered at Google, so the first
-    // silent probe finds nothing. A single-attempt probe would give up here
-    // and surface a spurious popup_closed for a sign-in that succeeded.
-    gisFake.queuePopupError('popup_closed')
-    gisFake.queueResponse({ error: 'interaction_required' })
-    gisFake.queueResponse({
-      access_token: 'recovered-late-token',
-      expires_in: 3600,
-      scope: SCOPES.join(' '),
-    })
-
-    const token = await acquireToken(baseOpts({ hint: 'user@example.com' }))
-
-    expect(token.accessToken).toBe('recovered-late-token')
-    // 1 interactive request + 2 silent probe attempts (the 2nd recovers).
-    expect(gisFake.calls.length).toBe(3)
-    expect(gisFake.calls.slice(1).every((c) => c.prompt === 'none')).toBe(true)
-    expect(gisFake.calls.slice(1).every((c) => c.hint === 'user@example.com')).toBe(true)
-  }, 10_000)
-
-  it('does not probe on the silent path, which is already a prompt:none request', async () => {
-    gisFake.queuePopupError('popup_closed')
-    gisFake.queueResponse({ access_token: 'should-not-be-used', expires_in: 3600, scope: '' })
-
-    const settled = await acquireToken(baseOpts({ interactive: false, hint: 'a@example.com' })).then(
-      () => 'resolved' as const,
-      (e: unknown) => e
-    )
-
-    expect(settled).toBeInstanceOf(NeedsReauthError)
-    expect((settled as NeedsReauthError).message).toBe('Silent token acquisition failed')
-    expect(gisFake.calls.length).toBe(1)
-  }, 10_000)
-
-  it('does not probe when the popup was blocked rather than closed', async () => {
-    gisFake.queuePopupError('popup_failed_to_open')
-    gisFake.queueResponse({ access_token: 'should-not-be-used', expires_in: 3600, scope: '' })
-
-    const settled = await acquireToken(baseOpts()).then(
-      () => 'resolved' as const,
-      (e: unknown) => e
-    )
-
-    expect(settled).toBeInstanceOf(NeedsReauthError)
-    expect((settled as NeedsReauthError).reason).toBe('popup_failed_to_open')
-    expect(gisFake.calls.length).toBe(1)
-  }, 10_000)
-
-  it('passes the connection hint to the probe so it targets the right account', async () => {
-    gisFake.queuePopupError('popup_closed')
-    gisFake.queueResponse({ access_token: 'hinted-token', expires_in: 3600, scope: SCOPES.join(' ') })
-
-    await acquireToken(baseOpts({ hint: 'user@example.com' }))
-
-    expect(gisFake.calls[1].hint).toBe('user@example.com')
-  }, 10_000)
+    await expect(acquireToken(baseOpts())).rejects.toMatchObject({ reason: 'popup_closed' })
+    expect(gisFake.calls).toHaveLength(1)
+  })
 })
