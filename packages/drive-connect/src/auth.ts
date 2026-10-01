@@ -1,4 +1,5 @@
 import type { Connection, DriveAuthHandle, DriveAuthOptions, DriveAuthStatus } from './types.js';
+import { NeedsReauthError } from '@open-webapp/drive-sync';
 import { createOverlayStore, shallowEqualStatus } from './statusStore.js';
 
 /** Interactive-call timeout, ported from portfolio's `handleConnect` Promise.race. */
@@ -178,16 +179,14 @@ export function createDriveAuth({
     disconnect,
     // Non-interactive fast path: if the cached token still has enough runway
     // (strict `>` past `Date.now() + tokenBufferMs`, not needing re-auth, real
-    // expiry), hand back the cached `Connection` with zero interactive calls,
-    // no `wrap`/`beforeInteractive`, and no store write. Otherwise fall through
-    // to the SAME `connect()` built above — reusing its `connectInFlight`
-    // guard and 10s timeout, so a concurrent widget Connect folds into one flow.
+    // expiry), hand back the cached `Connection` with zero interactive calls.
+    // A missing or unusable connection requires an explicit `connect()` call.
     ensureFresh: async (): Promise<Connection> => {
       const conn = await project().getConnection();
       if (isTokenUsable(conn, tokenBufferMs)) {
         return conn;
       }
-      return connect();
+      throw new NeedsReauthError('Google Drive connection requires reauthentication');
     },
     // Host-called only. drive-sync exposes `activate()` on the top-level
     // facade (per-project registration is implicit), so this forwards to

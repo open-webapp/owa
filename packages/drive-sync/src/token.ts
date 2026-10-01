@@ -58,22 +58,8 @@ interface GisWindow {
  * success token can arrive well after GIS's popup-closed poll fires,
  * causing genuinely successful sign-ins to be reported as NeedsReauthError.
  *
- * The grace window alone is NOT sufficient: in the field there are completed
- * sign-ins where the success `callback` never arrives at all, so no window is
- * long enough. `probeForCompletedGrant` below is what actually recovers those.
  */
 const POPUP_CLOSED_GRACE_MS = 2000;
-
-/**
- * The silent `prompt: 'none'` probe that recovers a completed sign-in GIS
- * misreported as `popup_closed` is retried a few times: GIS's popup-closed
- * poll can fire before the just-granted consent is durably registered at
- * Google, so a single immediate probe races the grant into existence and
- * loses. A few spaced retries let a real grant surface while still failing
- * fast enough that a genuine cancellation is reported promptly.
- */
-const PROBE_ATTEMPTS = 3;
-const PROBE_RETRY_DELAY_MS = 350;
 
 /**
  * Hard ceiling on a single GIS token request.
@@ -93,10 +79,6 @@ const PROBE_RETRY_DELAY_MS = 350;
  */
 const INTERACTIVE_REQUEST_TIMEOUT_MS = 5 * 60_000;
 const SILENT_REQUEST_TIMEOUT_MS = 10_000;
-/** Probes run up to PROBE_ATTEMPTS times, so each one has to fail fast. */
-const PROBE_REQUEST_TIMEOUT_MS = 4_000;
-
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Persists a freshly-acquired GIS token response as a StoredToken, deriving
@@ -245,64 +227,6 @@ export async function acquireToken(opts: AcquireTokenOptions): Promise<StoredTok
   } finally {
     inFlight.delete(key);
   }
-}
-
-function isPopupClosedError(err: unknown): boolean {
-  return err instanceof NeedsReauthError && err.reason === 'popup_closed';
-}
-
-/**
- * Issues up to `PROBE_ATTEMPTS` silent `prompt: 'none'` requests to find out
- * whether the sign-in that GIS reported as `popup_closed` actually completed.
- * Resolves with the token response as soon as a live grant is found;
- * otherwise rethrows `popupClosedError` — the original interactive failure —
- * so callers see the cancellation they would have seen before, never a
- * confusing silent-path error.
- *
- * `opts.hint` matters here: a bare `prompt: 'none'` request with no
- * `login_hint` cannot be resolved by GIS when the browser holds more than one
- * Google session, so the interactive callers pass the connection's known
- * email through as the hint for this probe.
- */
-async function probeForCompletedGrant(
-  initTokenClient: (config: GisTokenClientConfig) => GisTokenClient,
-  opts: AcquireTokenOptions,
-  popupClosedError: unknown
-): Promise<GisTokenResponse> {
-  opts.logger?.debug('drive-sync: popup_closed with no token; probing for a completed grant', {
-    projectId: opts.projectId,
-  });
-
-  let lastProbeError: unknown;
-  for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt += 1) {
-    try {
-      // No grace window: `prompt: 'none'` never opens a popup, so there is no
-      // popup-closed poll to race and nothing to wait out on failure.
-      const response = await requestGisToken(
-        initTokenClient,
-        opts,
-        { prompt: 'none', hint: opts.hint },
-        0,
-        PROBE_REQUEST_TIMEOUT_MS
-      );
-      opts.logger?.debug('drive-sync: recovered a completed sign-in reported as popup_closed', {
-        projectId: opts.projectId,
-        attempt,
-      });
-      return response;
-    } catch (probeError: unknown) {
-      lastProbeError = probeError;
-      if (attempt < PROBE_ATTEMPTS) {
-        await delay(PROBE_RETRY_DELAY_MS);
-      }
-    }
-  }
-
-  opts.logger?.debug('drive-sync: no live grant after popup_closed; treating as cancelled', {
-    projectId: opts.projectId,
-    probeError: lastProbeError,
-  });
-  throw popupClosedError;
 }
 
 /**
@@ -459,17 +383,7 @@ async function acquireTokenUncoalesced(opts: AcquireTokenOptions): Promise<Store
     if (!opts.interactive) {
       throw new NeedsReauthError('Silent token acquisition failed', { reason: 'gis_error' });
     }
-    if (!isPopupClosedError(err)) {
-      throw err;
-    }
-    // GIS said the popup closed and never delivered a token, but that is NOT
-    // proof the user cancelled: a completed consent whose success message is
-    // never posted back to this page looks identical from here. The two cases
-    // ARE distinguishable at Google, though — a completed consent leaves a
-    // live grant behind, so a `prompt: 'none'` request now succeeds with no
-    // popup at all. Probe for it; a cancelled sign-in leaves no grant and the
-    // probe fails, in which case we surface the original popup_closed error.
-    response = await probeForCompletedGrant(initTokenClient, opts, err);
+    throw err;
   }
 
   const token = await persistTokenResponse(opts.appId, opts.projectId, response);

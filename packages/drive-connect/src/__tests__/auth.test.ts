@@ -111,7 +111,7 @@ describe('createDriveAuth handle', () => {
     expect(result.current.connected).toBe(true)
   })
 
-  it('3. ensureFresh() token-runway boundary: interactive connect iff the cached token is not usable', async () => {
+  it('3. ensureFresh() token-runway boundary: rejects without OAuth iff the cached token is not usable', async () => {
     // Freeze the clock so the strict `expiresAt > now + bufferMs` boundary is
     // exact. setImmediate is left real so fake-indexeddb keeps working.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
@@ -119,14 +119,13 @@ describe('createDriveAuth handle', () => {
       const now = Date.now()
       const bufferMs = 5 * 60 * 1000
 
-      // Row A — expiresAt exactly at (now + bufferMs): NOT usable (strict `>`) -> interactive.
+      // Row A — expiresAt exactly at (now + bufferMs): NOT usable (strict `>`) -> reject.
       {
         const a = createDriveAuth({ drive: h.drive, projectId: h.projectId })
         await h.seedConnection({ expiresAt: now + bufferMs })
         const before = h.gisFake.calls.length
-        h.gisFake.queueResponse(goodResponse())
-        await a.ensureFresh()
-        expect(h.gisFake.calls.length - before).toBe(1)
+        await expect(a.ensureFresh()).rejects.toBeInstanceOf(NeedsReauthError)
+        expect(h.gisFake.calls.length - before).toBe(0)
       }
 
       // Row B — one whole second past the buffer: usable -> NO interactive.
@@ -145,18 +144,17 @@ describe('createDriveAuth handle', () => {
       // Row C — `expiresAt: null` is not expressible: `seedConnection` always
       // persists a token with a numeric expiry and the harness exposes no hook
       // for a connection with no token / null expiry. The "not usable ->
-      // interactive" path it would exercise is covered by Row D through the
+      // rejection" path it would exercise is covered by Row D through the
       // other real unusable-token signal (needsReauth).
 
       // Row D — needsReauth:true (userinfo scope withheld) with plenty of
-      // runway: NOT usable -> interactive.
+      // runway: NOT usable -> reject.
       {
         const d = createDriveAuth({ drive: h.drive, projectId: h.projectId })
         await h.seedConnection({ needsReauth: true, expiresAt: now + 3_600_000 })
         const before = h.gisFake.calls.length
-        h.gisFake.queueResponse(goodResponse())
-        await d.ensureFresh()
-        expect(h.gisFake.calls.length - before).toBe(1)
+        await expect(d.ensureFresh()).rejects.toBeInstanceOf(NeedsReauthError)
+        expect(h.gisFake.calls.length - before).toBe(0)
       }
     } finally {
       vi.useRealTimers()
@@ -172,13 +170,14 @@ describe('createDriveAuth handle', () => {
     expect(c1).toBe(c2)
   })
 
-  it('5. ensureFresh() + connect() in parallel fold into one popup', async () => {
+  it('5. ensureFresh() does not join a concurrent interactive connect', async () => {
     h.gisFake.queueResponse(goodResponse())
 
-    const [a, b] = await Promise.all([auth.ensureFresh(), auth.connect()])
+    const [a, b] = await Promise.allSettled([auth.ensureFresh(), auth.connect()])
 
     expect(h.gisFake.calls.length).toBe(1)
-    expect(a).toBe(b)
+    expect(a).toMatchObject({ status: 'rejected', reason: expect.any(NeedsReauthError) })
+    expect(b).toMatchObject({ status: 'fulfilled' })
   })
 
   it('6. a failed connect() sets the error status and resets the in-flight guard', async () => {
@@ -340,14 +339,9 @@ describe('createDriveAuth handle', () => {
 
     const a = createDriveAuth({ drive: h.drive, projectId: h.projectId })
 
-    // popup_closed with NO recoverable grant: drive-sync's own prompt:'none'
-    // probe runs 3 times, every attempt fails, and it rethrows its original
-    // NeedsReauthError(reason:'popup_closed') — the state exercised by
-    // drive-sync's "still reports a genuinely cancelled sign-in" test.
+    // popup_closed is terminal: drive-sync reports the original cancellation
+    // without issuing any silent follow-up requests.
     h.gisFake.queuePopupError('popup_closed')
-    h.gisFake.queueResponse({ error: 'interaction_required' })
-    h.gisFake.queueResponse({ error: 'interaction_required' })
-    h.gisFake.queueResponse({ error: 'interaction_required' })
 
     const err = await a.connect().then(
       () => {
