@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDriveSync } from '../index.js'
+import { createConnectionSnapshotStore } from '../connectionSnapshot.js'
 import { setConn, setToken } from '../storage.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 import type { StoredToken } from '../types.js'
@@ -100,6 +101,20 @@ describe('connection snapshot (T6)', () => {
   afterEach(() => {
     gisFake.uninstall()
     vi.unstubAllGlobals()
+  })
+
+  it('does not commit a connection read invalidated by disconnect', () => {
+    const store = createConnectionSnapshotStore()
+    const staleGeneration = store.generation()
+
+    store.invalidateReads()
+    store.commitIfCurrent(staleGeneration, {
+      email: 'user@example.com',
+      needsReauth: false,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    })
+
+    expect(store.get()).toBeNull()
   })
 
   it('referential stability: an unrelated re-read does not change the snapshot reference or over-notify', async () => {

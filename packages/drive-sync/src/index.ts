@@ -190,13 +190,15 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
    * connect()/disconnect(); call sites in THIS task fire it with `void`.
    */
   function reReadConnection(projectId: string): Promise<void> {
+    const store = getOrInitStore(projectId);
+    const generation = store.generation();
     return getConnectionImpl({
       appId,
       projectId,
       requiredScopes: EFFECTIVE_SCOPES,
     })
       .then((conn) => {
-        getOrInitStore(projectId).commit(conn);
+        store.commitIfCurrent(generation, conn);
       })
       .catch((err) => {
         logger.warn('drive-sync: connection snapshot re-read failed', { err });
@@ -388,6 +390,10 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
           },
         };
         await disconnectImpl(disconnectOpts);
+        // A read started before the durable records were cleared can resolve
+        // later with the old account. Ignore it before publishing the
+        // post-disconnect snapshot.
+        getOrInitStore(projectId).invalidateReads();
         // Awaited, same reasoning as connect() above: `await disconnect()`
         // must not settle until `getConnectionSync()` reflects the
         // post-disconnect snapshot.

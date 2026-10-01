@@ -3,6 +3,9 @@ import type { Connection } from './types.js';
 export interface ConnectionSnapshotStore {
   get(): Connection | null;
   commit(next: Connection | null): void;
+  generation(): number;
+  invalidateReads(): void;
+  commitIfCurrent(generation: number, next: Connection | null): void;
   subscribe(fn: () => void): () => void;
 }
 
@@ -28,6 +31,7 @@ function shallowEqualConn(a: Connection | null, b: Connection | null): boolean {
  */
 export function createConnectionSnapshotStore(): ConnectionSnapshotStore {
   let snapshot: Connection | null = null;
+  let readGeneration = 0;
   const listeners = new Set<() => void>();
 
   function notify(): void {
@@ -48,6 +52,15 @@ export function createConnectionSnapshotStore(): ConnectionSnapshotStore {
     },
     commit(next: Connection | null): void {
       commit(next);
+    },
+    generation(): number {
+      return readGeneration;
+    },
+    invalidateReads(): void {
+      readGeneration += 1;
+    },
+    commitIfCurrent(generation: number, next: Connection | null): void {
+      if (generation === readGeneration) commit(next);
     },
     subscribe(fn: () => void): () => void {
       listeners.add(fn);
