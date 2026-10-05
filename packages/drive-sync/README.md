@@ -63,6 +63,33 @@ Each `CalendarEvent` includes `selfResponseStatus`, a best-effort `joinUrl`,
 and `isAllDay`-aware `start`/`end` (an all-day event has `date` set and
 `dateTime` left `undefined`).
 
+#### Multiple calendars (0.10.0)
+
+`p.calendar.listCalendars(callOpts?)` returns every calendar on the account's
+calendar list as `CalendarInfo[]` (`id`, `summary`, `primary`, `accessRole`,
+and optional `backgroundColor`, `foregroundColor`, `selected`). Pagination is
+handled internally; it uses the same `calendar.readonly` scope and is
+non-interactive by default, like `listEvents`. `listEvents` takes an optional
+`calendarId` (default `'primary'`, URL-encoded in the request path), and each
+returned `CalendarEvent.calendarId` is the id you passed (or `'primary'`), not
+resolved to an email.
+
+```ts
+const calendars = await p.calendar.listCalendars()
+const timeMin = new Date().toISOString()
+const timeMax = new Date(Date.now() + 7 * 86400_000).toISOString()
+const perCalendar = await Promise.all(
+  calendars
+    .filter((c) => c.selected)
+    .map((c) => p.calendar.listEvents({ timeMin, timeMax, calendarId: c.id })),
+)
+const events = perCalendar.flat() // each event.calendarId identifies its source
+```
+
+**0.10.0 note:** `calendarId: string` is now a required field on
+`CalendarEvent`. Consumers that hand-build `CalendarEvent` literals (tests,
+mocks) must add it.
+
 ### Synchronous connection snapshot
 
 `p.getConnectionSync()` / `p.subscribeConnection()` give a framework store a
