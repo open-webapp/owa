@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/drive-connect",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "repository": {
     "type": "git",
@@ -25,11 +25,11 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@open-webapp/drive-sync": "^0.9.3",
+    "@open-webapp/drive-sync": "^0.10.0",
     "react": "^19"
   },
   "devDependencies": {
-    "@open-webapp/drive-sync": "^0.9.3",
+    "@open-webapp/drive-sync": "^0.10.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

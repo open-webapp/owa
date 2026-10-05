@@ -108,6 +108,11 @@ describe('calendar pure helpers', () => {
       })
       expect(event.isAllDay).toBe(false)
     })
+
+    it('defaults calendarId to primary when called with one arg', () => {
+      const event = mapEvent({ id: 'e1', htmlLink: 'https://calendar.google.com/e1' })
+      expect(event.calendarId).toBe('primary')
+    })
   })
 })
 
@@ -125,24 +130,20 @@ describe('listEvents (integration)', () => {
     vi.unstubAllGlobals()
   })
 
-  function stubFetch(items: unknown[]): void {
+  function stubFetch(items: unknown[], status = 200): void {
     fetchMock = vi.fn(async (input: unknown) => {
-      const url = typeof input === 'string' ? input : (input as Request)?.url ?? String(input)
+      const url = String(input)
       if (url.startsWith(USERINFO_URL)) {
-        return new Response(JSON.stringify({ email: 'user@example.com' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return new Response(JSON.stringify({ email: 'user@example.com' }), { status: 200 })
       }
-      if (url.startsWith(`${CALENDAR_BASE}/calendars/primary/events`)) {
-        return new Response(JSON.stringify({ items }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-      throw new Error(`unexpected fetch: ${url}`)
+      if (status !== 200) return new Response('boom', { status })
+      return new Response(JSON.stringify({ items }), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
+  }
+
+  function grant(): void {
+    gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
   }
 
   function makeProject(additionalScopes?: string[]): ProjectHandle {
@@ -159,7 +160,7 @@ describe('listEvents (integration)', () => {
 
   it('issues a GET to the expected URL shape with timeMin/timeMax/singleEvents/orderBy', async () => {
     stubFetch([])
-    gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    grant()
     const p = makeProject()
 
     await p.calendar.listEvents({ timeMin: '2026-09-20T00:00:00Z', timeMax: '2026-10-27T00:00:00Z' })
@@ -177,7 +178,7 @@ describe('listEvents (integration)', () => {
 
   it('defaults to non-interactive token acquisition', async () => {
     stubFetch([])
-    gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    grant()
     const p = makeProject()
 
     await p.calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
@@ -187,7 +188,7 @@ describe('listEvents (integration)', () => {
 
   it('allows the interactive path when callOpts.interactive is true', async () => {
     stubFetch([])
-    gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    grant()
     const p = makeProject()
 
     await p.calendar.listEvents({ timeMin: 'a', timeMax: 'b' }, { interactive: true })
@@ -208,7 +209,7 @@ describe('listEvents (integration)', () => {
         attendees: [{ self: true, responseStatus: 'declined' }],
       },
     ])
-    gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })
+    grant()
     const p = makeProject()
 
     const events = await p.calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
@@ -226,5 +227,61 @@ describe('listEvents (integration)', () => {
     await p.calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
 
     expect(gisFake.calls[0].scope).toBe(expectedScope)
+  })
+
+  describe('calendarId', () => {
+    const raw = {
+      id: 'e1',
+      summary: 'X',
+      start: { dateTime: '2026-10-01T09:00:00-07:00' },
+      end: { dateTime: '2026-10-01T09:30:00-07:00' },
+      htmlLink: 'https://calendar.google.com/e1',
+    }
+    function calUrl(): string {
+      return String(fetchMock.mock.calls.find(([i]) => String(i).includes('/calendars/'))![0])
+    }
+    it('defaults to primary in URL and events', async () => {
+      stubFetch([raw])
+      grant()
+      const events = await makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
+      expect(calUrl()).toContain('/calendars/primary/events')
+      expect(events[0].calendarId).toBe('primary')
+    })
+
+    it('encodes a group calendar id and tags events with it', async () => {
+      stubFetch([raw])
+      grant()
+      const events = await makeProject().calendar.listEvents({
+        timeMin: 'a',
+        timeMax: 'b',
+        calendarId: 'a@group.calendar.google.com',
+      })
+      expect(calUrl()).toContain('/calendars/a%40group.calendar.google.com/events')
+      expect(events[0].calendarId).toBe('a@group.calendar.google.com')
+    })
+
+    it('encodes # and / in ids', async () => {
+      stubFetch([raw])
+      grant()
+      const p = makeProject()
+      await p.calendar.listEvents({
+        timeMin: 'a',
+        timeMax: 'b',
+        calendarId: 'holiday#x@group.v.calendar.google.com',
+      })
+      expect(calUrl()).toContain('/calendars/holiday%23x%40group.v.calendar.google.com/events')
+      stubFetch([raw])
+      grant()
+      await p.calendar.listEvents({ timeMin: 'a', timeMax: 'b', calendarId: 'a/b' })
+      expect(calUrl()).toContain('/calendars/a%2Fb/events')
+    })
+
+    it('throws on a non-ok response', async () => {
+      stubFetch([raw], 404)
+      grant()
+      await expect(
+        makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b', calendarId: 'zzz' })
+      ).rejects.toThrow()
+    })
   })
 })

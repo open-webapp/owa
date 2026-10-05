@@ -1,5 +1,5 @@
 import type { Logger } from './logger.js';
-import type { CallOptions, CalendarEvent, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, PickFileOptions, PickedFile } from './types.js';
+import type { CallOptions, CalendarEvent, CalendarInfo, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
@@ -14,7 +14,7 @@ import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload, CalendarEvent, CalendarEventDateTime, ListEventsOptions } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload, CalendarEvent, CalendarInfo, CalendarEventDateTime, ListEventsOptions } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -95,6 +95,7 @@ export interface PermissionsHandle {
 
 export interface CalendarHandle {
   listEvents(opts: ListEventsOptions, callOpts?: CallOptions): Promise<CalendarEvent[]>;
+  listCalendars(callOpts?: CallOptions): Promise<CalendarInfo[]>;
 }
 
 export interface ProjectHandle {
@@ -339,6 +340,9 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
     };
 
     const calendar: CalendarHandle = {
+      listCalendars(callOpts) {
+        return calendarImpl.listCalendars({ ...base, interactive: callOpts?.interactive });
+      },
       listEvents(opts, callOpts) {
         return calendarImpl.listEvents({ ...base, ...opts, interactive: callOpts?.interactive });
       },

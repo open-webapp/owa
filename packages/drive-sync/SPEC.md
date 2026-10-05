@@ -156,8 +156,11 @@ interface CalendarEvent {
   joinUrl: string | null;
   organizer: { displayName?: string; email?: string; self: boolean };
   htmlLink: string;
+  calendarId: string; // the calendarId passed to listEvents, or 'primary'; NOT resolved to an email (0.10.0, required)
 }
 ```
+
+**Multiple calendars (v0.10.0).** `ListEventsOptions.calendarId?: string` (default `'primary'`) selects the calendar; it is `encodeURIComponent`-ed into `/calendars/{id}/events`. `ProjectHandle.calendar.listCalendars(callOpts?)` issues `GET /calendar/v3/users/me/calendarList?maxResults=250`, following `nextPageToken` until exhausted (any failing page rejects the whole call, no partial results), and returns `CalendarInfo[]` (`id`, `summary`, `primary`, `accessRole`, optional `backgroundColor`/`foregroundColor`/`selected`). Same `calendar.readonly` scope and same non-interactive default as `listEvents`. `CalendarEvent.calendarId` is now required: hand-built `CalendarEvent` literals (tests/mocks) must add it.
 
 **`selfResponseStatus` derivation** (`calendar.ts`'s `deriveSelfResponseStatus`): if the raw event has an `attendees` array, find the entry with `self === true` and pass its `responseStatus` through verbatim (Google's enum already matches this type; defaults to `'needsAction'` if a non-empty `attendees` array somehow has no self entry). If there is no `attendees` array at all (a self-only event, or an organizer with nothing to respond to), the status is `'accepted'`.
 

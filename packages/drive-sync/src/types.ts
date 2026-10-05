@@ -157,10 +157,28 @@ export interface CalendarEvent {
   joinUrl: string | null;
   organizer: { displayName?: string; email?: string; self: boolean };
   htmlLink: string;
+  /** ID of the calendar this event belongs to. */
+  calendarId: string;
+}
+
+/** Metadata for a calendar in the user's calendar list. */
+export interface CalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  /** True iff this is the user's primary calendar. */
+  primary: boolean;
+  /** Access role of the user on this calendar (e.g. 'owner', 'reader'). */
+  accessRole: string;
+  /** Whether the calendar is selected (shown) in the user's Google Calendar UI. */
+  selected?: boolean;
 }
 
 /** Options for `ProjectHandle.calendar.listEvents()`. Caller supplies the time window. */
 export interface ListEventsOptions {
   timeMin: string;
   timeMax: string;
+  /** Calendar to list events from. Defaults to 'primary'. */
+  calendarId?: string;
 }
