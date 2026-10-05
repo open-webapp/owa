@@ -39,3 +39,9 @@ Whenever `packages/drive-sync` is upgraded, ALWAYS update `packages/project-sync
 For example, `project-sync@latest` (0.1.4) still peers `drive-sync@^0.5.0` even though a newer `drive-sync` has been published. When touching `project-sync`, update its `peerDependencies` (and `devDependencies`) to reference the current `drive-sync` version, then bump `project-sync`'s own version so the change gets published.
 
 Apply the same rule to any package in `packages/` that declares a peer on another workspace package: before publishing, verify the peer range covers the latest published version of that peer, and widen or bump it if not.
+
+## Public behavior contracts are frozen unless explicitly requested
+
+Never change the observable behavior of a published package's public API (return values, thrown errors, whether it opens UI/popups) as a side effect of another task, "fix", or refactor. Only do so when the user explicitly asks for that specific change, and mark it as breaking in the commit message and version.
+
+Specifically, `drive-connect`'s `ensureFresh()` MUST fall through to the interactive `connect()` flow when the token is missing/unusable; it must NEVER throw `NeedsReauthError` instead. This is locked by tests 3, 5 and 5b in `packages/drive-connect/src/__tests__/auth.test.ts`. If a test encodes a contract, never edit the test to match changed code; ask the user first.
