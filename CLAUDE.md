@@ -2,9 +2,16 @@
 
 ## Auto-committing package changes
 
-When you modify files under `packages/drive-sync`, `packages/project-sync`, or `packages/drive-connect` as part of a task, commit those changes without waiting to be asked. Branch off `main` first, commit the change with a descriptive message, merge back to `main` (`--no-ff`), and push. Then follow the auto-tagging rule below.
+When you modify files under `packages/drive-sync`, `packages/project-sync`, or `packages/drive-connect` as part of a task, commit those changes without waiting to be asked. Branch off `main`, commit with a descriptive message, run the affected package's tests and `scripts/check-contracts.sh` locally, push the branch, and open a PR against `main`. Do NOT merge to `main` locally or push to `main` directly.
 
-This is a standing instruction: treat "the change is made" as "commit, merge, tag, and push" for these three packages.
+### PR checks gate merging
+
+After opening (or updating) a PR, wait for its checks to finish: poll `gh pr checks <pr>` (e.g. every 30-60s) until none are pending.
+- **All checks pass:** merge the PR (`gh pr merge <pr> --merge`), update local `main`, then follow the auto-tagging rule below (tag the merge commit and push the tag), and clean up the branch/worktree.
+- **Any check fails (or none ever report):** do NOT merge or tag. Report to the user which check failed, with the relevant log lines (`gh run view --log-failed`), and stop for their direction.
+- Never merge with failing, pending, or skipped required checks, and never bypass or disable a check to get green.
+
+This is a standing instruction: treat "the change is made" as "commit, open PR, wait for checks, merge, tag, and push" for these three packages. Changes that touch no package (e.g. CI only) follow the same PR flow but need no tag.
 
 ## Auto-tagging on commit
 
