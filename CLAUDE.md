@@ -45,3 +45,5 @@ Apply the same rule to any package in `packages/` that declares a peer on anothe
 Never change the observable behavior of a published package's public API (return values, thrown errors, whether it opens UI/popups) as a side effect of another task, "fix", or refactor. Only do so when the user explicitly asks for that specific change, and mark it as breaking in the commit message and version.
 
 Specifically, `drive-connect`'s `ensureFresh()` MUST fall through to the interactive `connect()` flow when the token is missing/unusable; it must NEVER throw `NeedsReauthError` instead. This is locked by tests 3, 5 and 5b in `packages/drive-connect/src/__tests__/auth.test.ts`. If a test encodes a contract, never edit the test to match changed code; ask the user first.
+
+Contract tests are enforced in CI by `scripts/check-contracts.sh` (`.github/workflows/ci.yml`). Run it before committing any change under `packages/drive-connect`.
