@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
       # --legacy-peer-deps: known ERESOLVE in this repo (project-sync peer @open-webapp/drive-sync ^0.5.0 vs workspace 0.6.0); plain npm install fails
@@ -30,7 +30,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
-      - run: npm -w packages/drive-sync run test || true
+      - run: npm -w packages/drive-sync run test
       - run: npm publish --access public --provenance --workspace packages/drive-sync
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
       # --legacy-peer-deps: known ERESOLVE in this repo (project-sync peer @open-webapp/drive-sync ^0.5.0 vs workspace 0.6.0); plain npm install fails
@@ -54,7 +54,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
       - run: npm -w packages/project-sync run build
-      - run: npm -w packages/project-sync run test || true
+      - run: npm -w packages/project-sync run test
       - run: npm publish --access public --provenance --workspace packages/project-sync
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
       # --legacy-peer-deps: known ERESOLVE in this repo (project-sync peer @open-webapp/drive-sync ^0.5.0 vs workspace 0.6.0); plain npm install fails
@@ -78,7 +78,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm -w packages/drive-sync run build
       - run: npm -w packages/drive-connect run build
-      - run: npm -w packages/drive-connect run test || true
+      - run: npm -w packages/drive-connect run test
       - run: npm publish --access public --provenance --workspace packages/drive-connect
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
