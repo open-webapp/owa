@@ -42,6 +42,21 @@ export class NeedsReauthError extends DriveSyncError {
 }
 
 /**
+ * Thrown (v0.11.0+) when a non-interactive call would need a silent token
+ * refresh while the app is inactive (tab hidden or window unfocused). It means
+ * "later, not logout": nothing was refreshed or cleared, stored credentials and
+ * the connection are untouched, and the request is NOT replayed automatically.
+ * Retry the call after the app becomes active again. Deliberately NOT a
+ * subclass of `NeedsReauthError`.
+ */
+export class RefreshDeferredError extends DriveSyncError {
+  constructor(message = 'Token refresh deferred until the app is active', opts?: DriveSyncErrorOptions) {
+    super(message, { reason: 'refresh_deferred', ...opts });
+    this.name = 'RefreshDeferredError';
+  }
+}
+
+/**
  * Thrown on a 403 response with reason ACCESS_TOKEN_SCOPE_INSUFFICIENT.
  */
 export class ScopeInsufficientError extends DriveSyncError {

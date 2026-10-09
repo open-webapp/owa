@@ -3,10 +3,12 @@ import type { StoredToken } from './types.js';
 import { acquireToken } from './token.js';
 import { refreshEnvelope } from './envelope.js';
 import { getConnection, refreshSilently } from './connection.js';
+import { isAppActive } from './active.js';
 import { clearToken, getToken } from './storage.js';
 import {
   DriveSyncError,
   NeedsReauthError,
+  RefreshDeferredError,
   ScopeInsufficientError,
   NotFoundError,
   NotDownloadableError,
@@ -99,6 +101,13 @@ export async function driveFetch(opts: DriveFetchOptions): Promise<Response> {
     if (cached && cached.expiresAt > Date.now() + TOKEN_REUSE_BUFFER_MS) {
       return performFetch(opts, cached.accessToken, /* isRetryAfter401 */ false);
     }
+  }
+
+  // Inactive gate: from here on a non-interactive call needs a silent token
+  // refresh. Defer it (no GIS / exchange call, no state mutation) until the
+  // app is active again; the caller retries.
+  if (!interactive && !isAppActive()) {
+    throw new RefreshDeferredError();
   }
 
   // Resolve a hint email from the current connection (if any) so a
@@ -218,6 +227,11 @@ async function performFetch(
         status: 401,
         reason: lastBodyText,
       });
+    }
+
+    // Inactive: defer BEFORE clearToken so the stored token is untouched.
+    if (!isAppActive()) {
+      throw new RefreshDeferredError();
     }
 
     // Envelope mode: clear only the token key (per decision 4/8) and recover

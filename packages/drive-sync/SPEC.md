@@ -48,7 +48,7 @@ dispose();
 
 `createDriveSync()` itself attaches no listeners and makes no network calls. Every Drive-op call site accepts an optional `{ interactive?: boolean }` (default `false`) and resolves its own token internally — no caller ever threads a token or a `projectId` string into an HTTP call by hand.
 
-Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`/`CalendarHandle`, plus `getConnectionSync`/`subscribeConnection`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `calendar.ts` (read-only Calendar events — see §2a), `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes), `types.ts` (`DriveSyncOptions` incl. `additionalScopes`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`, `CalendarEvent`, `CalendarEventDateTime`, `ListEventsOptions`).
+Files implementing the surface: `index.ts` (factory + `ProjectHandle`/`FilesHandle`/`PermissionsHandle`/`CalendarHandle`, plus `getConnectionSync`/`subscribeConnection`), `connection.ts` (`connect`/`getConnection`/`disconnect`/`refreshSilently`/`getAccessToken`), `files.ts`, `permissions.ts`, `calendar.ts` (read-only Calendar events — see §2a), `reconcile.ts`, `refresh.ts` (`activate`/warm-up), `picker.ts` (Google Picker integration), `errors.ts` (typed error classes, incl. `RefreshDeferredError`), `active.ts` (`isAppActive`), `types.ts` (`DriveSyncOptions` incl. `additionalScopes`, `Connection`, `StoredToken`, `FileRef`, `DrivePermission`, `CallOptions`, `CalendarEvent`, `CalendarEventDateTime`, `ListEventsOptions`).
 
 `getAccessToken()` is the one deliberate exception to `Connection` never exposing secret material (types.ts): it exists solely so an app can feed the token to Google Picker (`setOAuthToken()`), which runs outside this library's control and has no other way to read it. Reuses a cached token while it has more than 5 minutes left; otherwise acquires one (interactive by default, since callers use this to drive a UI the user is actively interacting with).
 
@@ -228,7 +228,19 @@ Concretely, by module:
 
 Wrong-account detection therefore covers exactly two silent paths — the 401-retry-once in `http.ts` and the proactive warm-up in `refresh.ts`/`index.ts` — both of which are wired through `refreshSilently`. It does **not** cover the interactive `connect()` path (a user consenting is trusted at face value) nor any refresh path where the caller omitted `fetchEmail` (the `refresh.ts` fallback branch and any hand-rolled use of `acquireToken` directly).
 
+## 4a. Inactive refresh gate (v0.11.0, BREAKING)
+
+An app is **active** when `document.visibilityState === 'visible' && document.hasFocus()`; with no `document` (Node, workers) it is treated as active. The single helper is `active.ts`'s `isAppActive()`, used by both `index.ts` (warm-up listeners) and `http.ts`.
+
+While inactive, a **non-interactive** call that would need a silent token refresh rejects immediately with `RefreshDeferredError` (`reason: 'refresh_deferred'`). Deferred paths in `driveFetch`: (1) no cached token or an expired/near-expiry one (legacy GIS acquire and envelope/`tokenExchangeUrl` refresh alike); (2) the 401 silent-refresh-and-retry, checked before `clearToken` so the stored token is untouched. A still-valid cached token keeps working while hidden. No GIS or token-exchange call is made, and stored connection/token/envelope are untouched; nothing is broadcast and no logout happens. `RefreshDeferredError` extends `DriveSyncError` and is deliberately NOT a `NeedsReauthError`: it means "later, not logout".
+
+Interactive calls (`connect()`, `interactive: true`) are unchanged. There is no request queue or auto-retry: the deferred request is not replayed; on reactivation the existing visibility/pageshow/focus warm-up listeners refresh stale tokens, and the caller retries. In-flight GIS calls are not aborted.
+
+**Breaking:** callers that previously got a silent refresh (or `NeedsReauthError`) while the tab was hidden now get `RefreshDeferredError` and must retry once active.
+
 ## 5. Known limitations / accepted tradeoffs
+
+- **Inactive gate relies on `document.hasFocus()`**, which can be false while visible inside embedded iframes; such hosts see `RefreshDeferredError` on silent refreshes until focused. Callers that ignore `RefreshDeferredError` lose the request (no auto-retry).
 
 - **`reconcile()` degrades to a no-op** where `indexedDB.databases()` is unsupported (Firefox, older Safari at time of writing). On those browsers, orphaned per-project auth databases from deleted projects are never automatically reclaimed unless the app calls `dropProject(id)` eagerly when it deletes the project — `reconcile()` is a safety net, not the primary cleanup mechanism.
 - **`files.ts`'s `read()` returns `null` on 404**, and that single value conflates two different situations: a genuinely wrong/nonexistent `fileId`, and a file that exists but that the currently-authenticated account cannot see (e.g. connected as the wrong Google account). The library cannot distinguish these — Drive itself returns an identical 404 for both — so callers that want to give an honest error message need to account for both cases themselves.

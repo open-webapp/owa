@@ -1,6 +1,7 @@
 import type { Logger } from './logger.js';
 import type { CallOptions, CalendarEvent, CalendarInfo, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
+import { isAppActive } from './active.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
 import { reconcile as reconcileImpl, dropProject as dropProjectImpl } from './reconcile.js';
 import * as filesImpl from './files.js';
@@ -251,9 +252,7 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       return disposeBroadcast;
     }
 
-    const canWarmUpNow = (): boolean =>
-      document.visibilityState === 'visible' &&
-      document.hasFocus();
+    const canWarmUpNow = (): boolean => isAppActive();
 
     const runWarmUps = (): void => {
       for (const projectId of trackedProjectIds) {
