@@ -1,6 +1,7 @@
 import type { Logger } from './logger.js';
-import type { CalendarEvent, CalendarInfo, ListEventsOptions } from './types.js';
+import type { CalendarEvent, CalendarInfo, ListEventsOptions, FullSyncOptions, FullSyncResult, SyncChangesOptions, SyncChangesResult } from './types.js';
 import { driveFetch } from './http.js';
+import { DriveSyncError, SyncTokenExpiredError } from './errors.js';
 
 const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
 
@@ -12,6 +13,7 @@ interface RawGoogleCalendarEventDateTime {
 
 interface RawGoogleCalendarEvent {
   id: string;
+  status?: string;
   summary?: string;
   start?: RawGoogleCalendarEventDateTime;
   end?: RawGoogleCalendarEventDateTime;
@@ -103,6 +105,84 @@ export interface ListEventsCallOptions extends ListEventsOptions {
   requiredScopes: string[];
 }
 
+export type FullSyncCallOptions = FullSyncOptions & Omit<ListEventsCallOptions, keyof ListEventsOptions>;
+export type SyncChangesCallOptions = SyncChangesOptions & Omit<ListEventsCallOptions, keyof ListEventsOptions>;
+
+interface CalendarPage<T> {
+  items?: T[];
+  nextPageToken?: string;
+  nextSyncToken?: string;
+}
+
+/** Collect every page before mapping; only the final page supplies the sync token. */
+async function fetchCalendarPages<T>(
+  opts: ListCalendarsCallOptions,
+  base: string
+): Promise<{ items: T[]; nextSyncToken?: string }> {
+  const items: T[] = [];
+  let page: CalendarPage<T>;
+  let pageToken: string | undefined;
+  do {
+    const url = pageToken ? `${base}&pageToken=${encodeURIComponent(pageToken)}` : base;
+    const res = await driveFetch({
+      appId: opts.appId,
+      projectId: opts.projectId,
+      clientId: opts.clientId,
+      url,
+      method: 'GET',
+      interactive: opts.interactive ?? false,
+      requiredScopes: opts.requiredScopes,
+      logger: opts.logger,
+      fetchEmail: opts.fetchEmail,
+      tokenExchangeUrl: opts.tokenExchangeUrl,
+    });
+    page = (await res.json()) as CalendarPage<T>;
+    items.push(...(page.items ?? []));
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return { items, nextSyncToken: page.nextSyncToken };
+}
+
+/** Initial bounded Calendar sync, returning the cursor for incremental updates. */
+export async function fullSync(opts: FullSyncCallOptions): Promise<FullSyncResult> {
+  const id = opts.calendarId ?? 'primary';
+  const base = `${CALENDAR_BASE}/calendars/${encodeURIComponent(id)}/events?timeMin=${encodeURIComponent(
+    opts.timeMin
+  )}&timeMax=${encodeURIComponent(opts.timeMax)}&singleEvents=true&maxResults=250`;
+  const { items, nextSyncToken } = await fetchCalendarPages<RawGoogleCalendarEvent>(opts, base);
+  if (!nextSyncToken) {
+    throw new DriveSyncError('Calendar full sync response is missing nextSyncToken');
+  }
+  return { events: items.map((event) => mapEvent(event, id)), nextSyncToken };
+}
+
+/** Incremental Calendar sync; expired cursors are surfaced for caller-directed recovery. */
+export async function syncChanges(opts: SyncChangesCallOptions): Promise<SyncChangesResult> {
+  const id = opts.calendarId ?? 'primary';
+  const base = `${CALENDAR_BASE}/calendars/${encodeURIComponent(id)}/events?syncToken=${encodeURIComponent(
+    opts.syncToken
+  )}&maxResults=250&singleEvents=true`;
+  let pages: Awaited<ReturnType<typeof fetchCalendarPages<RawGoogleCalendarEvent>>>;
+  try {
+    pages = await fetchCalendarPages<RawGoogleCalendarEvent>(opts, base);
+  } catch (error) {
+    if (error instanceof DriveSyncError && error.status === 410) {
+      throw new SyncTokenExpiredError();
+    }
+    throw error;
+  }
+  if (!pages.nextSyncToken) {
+    throw new DriveSyncError('Calendar incremental sync response is missing nextSyncToken');
+  }
+  const events: CalendarEvent[] = [];
+  const deletedIds: string[] = [];
+  for (const item of pages.items) {
+    if (item.status === 'cancelled') deletedIds.push(item.id);
+    else events.push(mapEvent(item, id));
+  }
+  return { events, deletedIds, nextSyncToken: pages.nextSyncToken };
+}
+
 /**
  * Read-only listing of the connected account's primary calendar events in
  * `[timeMin, timeMax)`. Reuses `driveFetch` (generic enough for any Google
@@ -116,24 +196,12 @@ export interface ListEventsCallOptions extends ListEventsOptions {
  */
 export async function listEvents(opts: ListEventsCallOptions): Promise<CalendarEvent[]> {
   const id = opts.calendarId ?? 'primary';
-  const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(id)}/events?timeMin=${encodeURIComponent(
+  const base = `${CALENDAR_BASE}/calendars/${encodeURIComponent(id)}/events?timeMin=${encodeURIComponent(
     opts.timeMin
-  )}&timeMax=${encodeURIComponent(opts.timeMax)}&singleEvents=true&orderBy=startTime`;
+  )}&timeMax=${encodeURIComponent(opts.timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`;
 
-  const res = await driveFetch({
-    appId: opts.appId,
-    projectId: opts.projectId,
-    clientId: opts.clientId,
-    url,
-    method: 'GET',
-    interactive: opts.interactive ?? false,
-    requiredScopes: opts.requiredScopes,
-    logger: opts.logger,
-    fetchEmail: opts.fetchEmail,
-    tokenExchangeUrl: opts.tokenExchangeUrl,
-  });
-  const json = (await res.json()) as { items?: RawGoogleCalendarEvent[] };
-  return (json.items ?? []).map((e) => mapEvent(e, id));
+  const { items } = await fetchCalendarPages<RawGoogleCalendarEvent>(opts, base);
+  return items.map((e) => mapEvent(e, id));
 }
 
 interface RawGoogleCalendarListEntry {

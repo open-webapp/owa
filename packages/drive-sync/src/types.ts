@@ -182,3 +182,34 @@ export interface ListEventsOptions {
   /** Calendar to list events from. Defaults to 'primary'. */
   calendarId?: string;
 }
+
+/** Options for `ProjectHandle.calendar.fullSync()`. Caller supplies the time window. */
+export interface FullSyncOptions {
+  timeMin: string;
+  timeMax: string;
+  /** Calendar to sync. Defaults to 'primary'. */
+  calendarId?: string;
+}
+
+/** Options for `ProjectHandle.calendar.syncChanges()`. */
+export interface SyncChangesOptions {
+  syncToken: string;
+  /** Calendar to sync. Defaults to 'primary'. */
+  calendarId?: string;
+  /** Time windows cannot be supplied with an incremental sync token. */
+  timeMin?: never;
+  timeMax?: never;
+}
+
+/** Initial events and the token for subsequent incremental syncs. */
+export interface FullSyncResult {
+  events: CalendarEvent[];
+  nextSyncToken: string;
+}
+
+/** Changed events, deleted event IDs, and the token for the next incremental sync. */
+export interface SyncChangesResult {
+  events: CalendarEvent[];
+  deletedIds: string[];
+  nextSyncToken: string;
+}

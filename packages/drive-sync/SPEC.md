@@ -40,6 +40,8 @@ const files = await p.files.list({ folderId });
 const text = await p.files.read(fileId);         // string | Blob | null (null on 404)
 const ref = await p.files.write({ folderId, name: 'x.json', content, mimeType: 'application/json' });
 await p.permissions.grant({ fileId, type: 'user', role: 'writer', emailAddress: 'a@b.com' });
+const full = await p.calendar.fullSync({ timeMin, timeMax }); // { events, nextSyncToken }
+const delta = await p.calendar.syncChanges({ syncToken: full.nextSyncToken }); // { events, deletedIds, nextSyncToken }
 
 await p.disconnect();
 await drive.dropProject(projectId);
@@ -167,6 +169,25 @@ interface CalendarEvent {
 **`joinUrl` derivation** (`calendar.ts`'s `extractJoinUrl`), in precedence order: (1) `event.hangoutLink` if present; (2) the first `event.conferenceData.entryPoints` entry with `entryPointType === 'video'`, its `uri`; (3) a best-effort regex scan, `event.location` then `event.description`, for the first URL matching `zoom.us`, `meet.google.com`, or `teams.microsoft.com` (may false-negative on oddly formatted text — accepted, since the two structured sources above cover the common case); (4) `null` if nothing matches.
 
 **All-day events.** `isAllDay = Boolean(raw.start?.date && !raw.start?.dateTime)`. The mapper (`calendar.ts`'s `mapEvent`) reads `start.date`/`end.date` when present and never assumes `start.dateTime` exists — an all-day event's `dateTime` field stays `undefined` on the normalized `CalendarEvent`, it is never coerced to `''` or allowed to throw.
+
+## 2b. Incremental calendar sync (v0.12.0)
+
+**API.** `ProjectHandle.calendar` adds two methods, both accepting optional `callOpts` as their second argument:
+
+- `fullSync({ calendarId?: string, timeMin: string, timeMax: string }, callOpts?)` returns `{ events: CalendarEvent[], nextSyncToken: string }`. The required time bounds seed the full sync; `calendarId` defaults to `'primary'`.
+- `syncChanges({ calendarId?: string, syncToken: string }, callOpts?)` returns `{ events: CalendarEvent[], deletedIds: string[], nextSyncToken: string }`. `events` contains changed/new events; `calendarId` defaults to `'primary'`.
+
+**Requests and pagination.** Both methods use `singleEvents=true`, `maxResults=250`, and follow every `nextPageToken`. `fullSync` sends the supplied time bounds and no `orderBy`. Incremental requests send the raw `syncToken` and no `timeMin`, `timeMax`, or `orderBy`, consistent with Google's sync-token parameter restrictions. Both require `nextSyncToken` on the final page; a missing final token throws `DriveSyncError` rather than returning an incomplete sync result.
+
+**Caller-owned token flow.** The raw Calendar sync token is opaque and owned by the caller, separately for each `calendarId`; the library does not persist it or automatically resync. Start with `fullSync`, replace the calendar's cache with its events, and retain its token. Then call `syncChanges` with that calendar's token, apply `deletedIds` and upsert changed/new events, and only then replace the stored token with `nextSyncToken`.
+
+**Deleted events and recurring instances.** In incremental sync, `syncChanges` filters cancelled event stubs before event mapping, so they do not require `start`/`end` or appear in normalized `events`; their ids are returned in `deletedIds`. With `singleEvents=true`, recurring-event ids are instance ids, not recurring-series ids; delete the matching cached instance by id.
+
+**410 recovery.** A Calendar HTTP 410 on any page rejects the whole call with `SyncTokenExpiredError`, which extends `DriveSyncError` with `status: 410` and `reason: 'sync_token_expired'`. Other errors retain their existing behavior. The caller catches only `SyncTokenExpiredError`, runs a new `fullSync` for that calendar and time window, and replaces the entire calendar cache and token after success; there is no automatic full-sync fallback or partial result to apply.
+
+These methods use the same `calendar.readonly` scope and non-interactive-by-default authentication as the existing Calendar methods. The normalized `CalendarEvent` shape is unchanged. Mocked tests can verify request parameters and token handling, but cannot verify Google's live acceptance of the `singleEvents=true` + `syncToken` combination.
+
+**BREAKING — `listEvents` pagination:** in v0.12.0, `listEvents` follows all pages rather than returning only the first page. Consumers now receive the complete event list, potentially more events than before; any failing page rejects the whole call rather than returning partial results.
 
 ## 3. Storage layout
 

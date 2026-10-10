@@ -90,6 +90,70 @@ const events = perCalendar.flat() // each event.calendarId identifies its source
 `CalendarEvent`. Consumers that hand-build `CalendarEvent` literals (tests,
 mocks) must add it.
 
+#### Incremental calendar sync (v0.12.0)
+
+- `p.calendar.fullSync({ calendarId?, timeMin, timeMax }, callOpts?)` requires
+  string time bounds and returns `{ events, nextSyncToken }`.
+- `p.calendar.syncChanges({ calendarId?, syncToken }, callOpts?)` requires the
+  raw sync token and returns `{ events, deletedIds, nextSyncToken }`, with
+  changed/new events in `events`.
+
+`calendarId` defaults to `'primary'`. Both methods use the same
+`calendar.readonly` scope and non-interactive default as `listEvents`.
+Tokens are caller-owned, opaque, and kept separately per calendar. Both
+methods paginate with `maxResults=250` and `singleEvents=true`, and require
+the final page's `nextSyncToken` or throw `DriveSyncError`. `fullSync` sends
+no `orderBy`; incremental requests send no `timeMin`, `timeMax`, or `orderBy`
+because of Google's sync-token parameter restrictions.
+
+In incremental sync, `syncChanges` filters cancelled stubs before event mapping
+and returns their ids in `deletedIds`. Recurring events use instance ids (`singleEvents`),
+so remove the matching instance, not the whole series. Mocked tests cannot
+verify Google's live acceptance of `singleEvents=true` with `syncToken`.
+
+This example maintains one calendar's cache, applies deletions and changes
+before advancing its token, and replaces the cache on HTTP 410:
+
+```ts
+import { SyncTokenExpiredError } from '@open-webapp/drive-sync'
+
+// p is connected with calendar.readonly in additionalScopes (see above).
+const calendarId = 'primary'
+const window = {
+  calendarId,
+  timeMin: new Date().toISOString(),
+  timeMax: new Date(Date.now() + 30 * 86400_000).toISOString(),
+}
+
+const full = await p.calendar.fullSync(window)
+let cache = new Map(full.events.map((event) => [event.id, event]))
+let syncToken = full.nextSyncToken // retain with this calendar's cache
+
+async function refreshCalendar() {
+  try {
+    const changes = await p.calendar.syncChanges({ calendarId, syncToken })
+    for (const id of changes.deletedIds) cache.delete(id)
+    for (const event of changes.events) cache.set(event.id, event)
+    syncToken = changes.nextSyncToken
+  } catch (error) {
+    if (!(error instanceof SyncTokenExpiredError)) throw error
+    const replacement = await p.calendar.fullSync(window)
+    cache = new Map(replacement.events.map((event) => [event.id, event]))
+    syncToken = replacement.nextSyncToken
+  }
+}
+
+await refreshCalendar() // incremental update; full-sync fallback on 410
+```
+
+A 410 on any page rejects the whole call with `SyncTokenExpiredError`
+(extends `DriveSyncError`, `status: 410`, `reason: 'sync_token_expired'`).
+The library does not auto-resync; other errors keep their existing behavior.
+
+**BREAKING (v0.12.0):** `listEvents` now returns all pages instead of only
+the first page, so callers may receive more events. A failing page rejects
+the whole call; no partial results are returned.
+
 ### Synchronous connection snapshot
 
 `p.getConnectionSync()` / `p.subscribeConnection()` give a framework store a
