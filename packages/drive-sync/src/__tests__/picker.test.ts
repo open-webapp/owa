@@ -121,9 +121,8 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       appId: 'app-id-42',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
-
-    expect(pickerFake.calls).toHaveLength(1)
+    // Token acquisition is asynchronous; wait for build(), not a time budget.
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
     const call = pickerFake.calls[0]
     expect(call.appId).toBe('app-id-42')
     // appId only matters alongside a real OAuth session, so assert both landed.
@@ -146,9 +145,8 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       parentFolderId: 'folder1',
     })
 
-    // Wait for the PickerBuilder to be created (happens after token acquisition)
-    // Use a small delay to ensure async operations complete
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Wait for build() after token acquisition before inspecting configuration.
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     // Verify pickerFake recorded the call with correct configuration
     expect(pickerFake.calls).toHaveLength(1)
