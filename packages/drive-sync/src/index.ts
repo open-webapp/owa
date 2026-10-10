@@ -1,5 +1,5 @@
 import type { Logger } from './logger.js';
-import type { CallOptions, CalendarEvent, CalendarInfo, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, PickFileOptions, PickedFile } from './types.js';
+import type { CallOptions, CalendarEvent, CalendarInfo, Connection, DriveSyncOptions, DrivePermission, FileRef, FileState, ListEventsOptions, FullSyncOptions, FullSyncResult, SyncChangesOptions, SyncChangesResult, PickFileOptions, PickedFile } from './types.js';
 import { noOpLogger } from './logger.js';
 import { isAppActive } from './active.js';
 import { connect as connectImpl, getConnection as getConnectionImpl, disconnect as disconnectImpl, getAccessToken as getAccessTokenImpl } from './connection.js';
@@ -15,7 +15,7 @@ import { createBroadcast, type BroadcastMessage } from './broadcast.js';
 import { evictDbHandle } from './storage.js';
 import { notifyExternalTokenRefresh } from './token.js';
 
-export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload, CalendarEvent, CalendarInfo, CalendarEventDateTime, ListEventsOptions } from './types.js';
+export type { DriveSyncOptions, Connection, StoredToken, FileRef, FileState, DrivePermission, CallOptions, WorkspaceMimeShorthand, PickFileOptions, PickedFile, Envelope, EnvelopePayload, CalendarEvent, CalendarInfo, CalendarEventDateTime, ListEventsOptions, FullSyncOptions, FullSyncResult, SyncChangesOptions, SyncChangesResult } from './types.js';
 export * from './errors.js';
 
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -96,6 +96,8 @@ export interface PermissionsHandle {
 
 export interface CalendarHandle {
   listEvents(opts: ListEventsOptions, callOpts?: CallOptions): Promise<CalendarEvent[]>;
+  fullSync(opts: FullSyncOptions, callOpts?: CallOptions): Promise<FullSyncResult>;
+  syncChanges(opts: SyncChangesOptions, callOpts?: CallOptions): Promise<SyncChangesResult>;
   listCalendars(callOpts?: CallOptions): Promise<CalendarInfo[]>;
 }
 
@@ -344,6 +346,12 @@ export function createDriveSync(options: DriveSyncOptions): DriveSync {
       },
       listEvents(opts, callOpts) {
         return calendarImpl.listEvents({ ...base, ...opts, interactive: callOpts?.interactive });
+      },
+      fullSync(opts, callOpts) {
+        return calendarImpl.fullSync({ ...base, ...opts, interactive: callOpts?.interactive });
+      },
+      syncChanges(opts, callOpts) {
+        return calendarImpl.syncChanges({ ...base, ...opts, interactive: callOpts?.interactive });
       },
     };
 

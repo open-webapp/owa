@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDriveSync, type ProjectHandle } from '../index.js'
 import { REQUIRED_SCOPES } from '../files.js'
-import { deriveSelfResponseStatus, extractJoinUrl, mapEvent } from '../calendar.js'
+import { deriveSelfResponseStatus, extractJoinUrl, mapEvent, fullSync, syncChanges, type FullSyncCallOptions, type SyncChangesCallOptions } from '../calendar.js'
+import { DriveSyncError, TransientError, NeedsReauthError, SyncTokenExpiredError } from '../errors.js'
 import { createGisFake, type GisFake } from '../testing/gisFake.js'
 
 const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3'
@@ -141,6 +142,226 @@ describe('listEvents (integration)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
   }
+
+  function stubPages(pages: { items?: unknown[]; nextPageToken?: string; nextSyncToken?: string; status?: number }[]): void {
+    let page = 0
+    fetchMock = vi.fn(async (input: unknown) => {
+      if (String(input).startsWith(USERINFO_URL)) {
+        return new Response(JSON.stringify({ email: 'user@example.com' }), { status: 200 })
+      }
+      const response = pages[page++]
+      if (!response) throw new Error('Unexpected extra page request')
+      return new Response(JSON.stringify(response), { status: response.status ?? 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  }
+
+  function eventRequests(): URL[] {
+    return fetchMock.mock.calls
+      .filter(([input]) => String(input).startsWith(`${CALENDAR_BASE}/calendars/`))
+      .map(([input]) => new URL(String(input)))
+  }
+
+  function fullSyncOptions(): FullSyncCallOptions {
+    return {
+      appId: freshId('app'), projectId: freshId('proj'), clientId: 'client-1',
+      requiredScopes: REQUIRED_SCOPES,
+      timeMin: '2026-10-01T00:00:00Z', timeMax: '2026-11-01T00:00:00Z',
+    }
+  }
+
+  function syncChangesOptions(): SyncChangesCallOptions {
+    const { timeMin: _min, timeMax: _max, ...options } = fullSyncOptions()
+    return { ...options, syncToken: 'a+b/c=' }
+  }
+
+  describe('syncChanges (exported seam)', () => {
+    it('splits changed events and cancelled id-only stubs across pages, using the final token', async () => {
+      const first = { id: 'e1', htmlLink: 'link', summary: 'Updated' }
+      const second = { id: 'e2', htmlLink: 'link2', start: { date: '2026-10-01' } }
+      stubPages([
+        { items: [first, { id: 'deleted1', status: 'cancelled' }], nextPageToken: 'page+2/=', nextSyncToken: 'ignore' },
+        { items: [{ id: 'deleted2', status: 'cancelled' }, second], nextSyncToken: 'final' },
+      ])
+      grant()
+      expect(await syncChanges(syncChangesOptions())).toEqual({
+        events: [mapEvent(first), mapEvent(second)], deletedIds: ['deleted1', 'deleted2'], nextSyncToken: 'final',
+      })
+      const requests = eventRequests()
+      expect(requests.map(url => url.searchParams.get('pageToken'))).toEqual([null, 'page+2/='])
+      for (const url of requests) {
+        expect(url.pathname).toBe('/calendar/v3/calendars/primary/events')
+        expect(url.href).toContain('syncToken=a%2Bb%2Fc%3D')
+        expect(url.searchParams.get('syncToken')).toBe('a+b/c=')
+        expect(url.searchParams.get('maxResults')).toBe('250')
+        expect(url.searchParams.get('singleEvents')).toBe('true')
+        for (const key of ['orderBy', 'timeMin', 'timeMax']) expect(url.searchParams.has(key)).toBe(false)
+      }
+      for (const [, init] of fetchMock.mock.calls) expect(init.method).toBe('GET')
+      expect(gisFake.calls[0].prompt).toBe('none')
+    })
+
+    it('encodes calendarId and preserves it on mapped events', async () => {
+      stubPages([{ items: [{ id: 'e1' }], nextSyncToken: 'next' }])
+      grant()
+      const result = await syncChanges({ ...syncChangesOptions(), calendarId: 'a@b#c/d' })
+      expect(eventRequests()[0].pathname).toBe('/calendar/v3/calendars/a%40b%23c%2Fd/events')
+      expect(result.events[0].calendarId).toBe('a@b#c/d')
+    })
+
+    it.each([false, true])('translates 410 with preceding page=%s without restarting sync', async (preceding) => {
+      stubPages([...(preceding ? [{ items: [{ id: 'e1' }], nextPageToken: 'second' }] : []), { status: 410 }])
+      grant()
+      const error = await syncChanges(syncChangesOptions()).catch(error => error)
+      expect(error).toBeInstanceOf(SyncTokenExpiredError)
+      expect(error).toMatchObject({ status: 410, reason: 'sync_token_expired' })
+      expect(eventRequests()).toHaveLength(preceding ? 2 : 1)
+    })
+
+    it.each([401, 403, 500])('preserves the existing error type for %s', async (status) => {
+      stubPages(Array.from({ length: status === 500 ? 3 : status === 401 ? 2 : 1 }, () => ({ status })))
+      grant()
+      if (status === 401) grant()
+      const error = await syncChanges(syncChangesOptions()).catch(error => error)
+      expect(error.constructor).toBe(status === 401 ? NeedsReauthError : status === 500 ? TransientError : DriveSyncError)
+      expect(error.status).toBe(status)
+    })
+
+    it('rejects a missing final sync token', async () => {
+      stubPages([{ nextPageToken: 'second', nextSyncToken: 'ignore' }, {}])
+      grant()
+      await expect(syncChanges(syncChangesOptions())).rejects.toThrow(DriveSyncError)
+    })
+
+    it('requires syncToken and forbids time windows at compile time', () => {
+      const options = syncChangesOptions()
+      const { syncToken: _token, ...withoutToken } = options
+      // @ts-expect-error incremental sync requires syncToken
+      const missing: SyncChangesCallOptions = withoutToken
+      // @ts-expect-error incremental sync forbids timeMin
+      const min: SyncChangesCallOptions = { ...options, timeMin: 'a' }
+      // @ts-expect-error incremental sync forbids timeMax
+      const max: SyncChangesCallOptions = { ...options, timeMax: 'b' }
+      void [missing, min, max]
+    })
+  })
+
+  describe('fullSync (exported seam)', () => {
+    it('merges mapped events from two pages and uses only the last sync token', async () => {
+      const first = { id: 'e1', htmlLink: 'https://calendar.google.com/e1', start: { date: '2026-10-01' } }
+      const second = { id: 'e2', htmlLink: 'https://calendar.google.com/e2', attendees: [{ self: true, responseStatus: 'declined' }] }
+      stubPages([
+        { items: [first], nextPageToken: 'page 2+/&=', nextSyncToken: 'ignore-first' },
+        { items: [second], nextSyncToken: 'final-token' },
+      ])
+      grant()
+      const opts = fullSyncOptions()
+      expect(await fullSync(opts)).toEqual({ events: [mapEvent(first), mapEvent(second)], nextSyncToken: 'final-token' })
+      const requests = eventRequests()
+      expect(requests).toHaveLength(2)
+      expect(requests.map(url => url.searchParams.get('pageToken'))).toEqual([null, 'page 2+/&='])
+      for (const url of requests) {
+        expect(url.pathname).toBe('/calendar/v3/calendars/primary/events')
+        expect(url.searchParams.get('timeMin')).toBe(opts.timeMin)
+        expect(url.searchParams.get('timeMax')).toBe(opts.timeMax)
+        expect(url.searchParams.get('singleEvents')).toBe('true')
+        expect(url.searchParams.get('maxResults')).toBe('250')
+        expect(url.searchParams.has('orderBy')).toBe(false)
+      }
+      for (const [, init] of fetchMock.mock.calls) expect(init.method).toBe('GET')
+      expect(gisFake.calls[0].prompt).toBe('none')
+    })
+
+    it('encodes the calendar id literally in the path and preserves it on events', async () => {
+      stubPages([{ items: [{ id: 'e1' }], nextSyncToken: 'token' }])
+      grant()
+      const result = await fullSync({ ...fullSyncOptions(), calendarId: 'a@b#c' })
+      expect(eventRequests()[0].pathname).toBe('/calendar/v3/calendars/a%40b%23c/events')
+      expect(result.events[0].calendarId).toBe('a@b#c')
+      expect(eventRequests()[0].searchParams.has('orderBy')).toBe(false)
+    })
+
+    it('propagates the existing driveFetch error after page two exhausts 500 retries', async () => {
+      stubPages([
+        { items: [{ id: 'e1' }], nextPageToken: 'second' },
+        { status: 500 }, { status: 500 }, { status: 500 },
+      ])
+      grant()
+      const error = await fullSync(fullSyncOptions()).catch(error => error)
+      expect(error).toBeInstanceOf(TransientError)
+      expect(error).toMatchObject({ status: 500, message: 'Drive request failed with status 500: {"status":500}' })
+      expect(eventRequests().map(url => url.searchParams.get('pageToken'))).toEqual([null, 'second', 'second', 'second'])
+    })
+
+    it('rejects when the last page omits a sync token even if an earlier page had one', async () => {
+      stubPages([
+        { items: [{ id: 'e1' }], nextPageToken: 'second', nextSyncToken: 'not-final' },
+        {},
+      ])
+      grant()
+      await expect(fullSync(fullSyncOptions())).rejects.toThrow(DriveSyncError)
+      expect(eventRequests()).toHaveLength(2)
+    })
+
+    it('requires timeMin at compile time', () => {
+      const { timeMin: _timeMin, ...withoutTimeMin } = fullSyncOptions()
+      // @ts-expect-error fullSync requires the initial window's timeMin
+      const invalid: FullSyncCallOptions = withoutTimeMin
+      void invalid
+    })
+  })
+
+  it('follows three pages in order using each response page token', async () => {
+    stubPages([
+      { items: [{ id: 'e1' }], nextPageToken: 'page 2+/' },
+      { items: [{ id: 'e2' }], nextPageToken: 'page 3&=' },
+      { items: [{ id: 'e3' }] },
+    ])
+    grant()
+    const events = await makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
+    expect(events.map(event => event.id)).toEqual(['e1', 'e2', 'e3'])
+    const requests = eventRequests()
+    expect(requests).toHaveLength(3)
+    expect(requests.map(url => url.searchParams.get('pageToken'))).toEqual([null, 'page 2+/', 'page 3&='])
+    for (const url of requests) {
+      expect(url.searchParams.get('maxResults')).toBe('250')
+      expect(url.searchParams.get('timeMin')).toBe('a')
+      expect(url.searchParams.get('timeMax')).toBe('b')
+      expect(url.searchParams.get('singleEvents')).toBe('true')
+      expect(url.searchParams.get('orderBy')).toBe('startTime')
+    }
+  })
+
+  it('returns a single page without requesting another page', async () => {
+    stubPages([{ items: [{ id: 'e1' }] }])
+    grant()
+    const events = await makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
+    expect(events.map(event => event.id)).toEqual(['e1'])
+    expect(eventRequests()).toHaveLength(1)
+    expect(eventRequests()[0].searchParams.has('pageToken')).toBe(false)
+  })
+
+  it('continues through an empty page with a next page token', async () => {
+    stubPages([
+      { items: [{ id: 'e1' }], nextPageToken: 'second' },
+      { items: [], nextPageToken: 'third' },
+      { items: [{ id: 'e3' }] },
+    ])
+    grant()
+    const events = await makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b' })
+    expect(events.map(event => event.id)).toEqual(['e1', 'e3'])
+    expect(eventRequests().map(url => url.searchParams.get('pageToken'))).toEqual([null, 'second', 'third'])
+  })
+
+  it('rejects the whole call when page two fails instead of returning partial events', async () => {
+    stubPages([
+      { items: [{ id: 'e1' }], nextPageToken: 'second' },
+      { status: 404 },
+    ])
+    grant()
+    await expect(makeProject().calendar.listEvents({ timeMin: 'a', timeMax: 'b' })).rejects.toThrow()
+    expect(eventRequests()).toHaveLength(2)
+  })
 
   function grant(): void {
     gisFake.queueResponse({ access_token: 'tok', expires_in: 3600, scope: REQUIRED_SCOPES.join(' ') })

@@ -23,6 +23,17 @@ export class DriveSyncError extends Error {
 }
 
 /**
+ * Thrown when a Calendar sync token has expired. The caller must run
+ * fullSync() and replace its cached events with the full sync result.
+ */
+export class SyncTokenExpiredError extends DriveSyncError {
+  constructor(message = 'Calendar sync token expired') {
+    super(message, { status: 410, reason: 'sync_token_expired' });
+    this.name = 'SyncTokenExpiredError';
+  }
+}
+
+/**
  * Thrown when no usable token exists and the requested call is
  * non-interactive (so no popup/redirect flow may be triggered to obtain one).
  *
