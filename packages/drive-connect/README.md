@@ -15,10 +15,11 @@ host's `onConnected` / `onDisconnected` callbacks.
 ## Install
 
 ```sh
-npm i @open-webapp/drive-connect@^0.2.0 @open-webapp/drive-sync@^0.8.0 react@^19
+npm i @open-webapp/drive-connect@^0.2.5 @open-webapp/drive-sync@^0.12.0 react@^19
 ```
 
-Both peers are required (non-optional). Pin `^0.2.0` — see
+Both peers are required (non-optional). drive-connect `0.2.5` accepts
+drive-sync `^0.11.0 || ^0.12.0` and React `^19`. Pin `^0.2.5` — see
 [Install from npm](#install-from-npm).
 
 ## Usage
@@ -184,13 +185,14 @@ token refresh.
 
 ### Install from npm
 
-Consume the published package and pin `^0.2.0`. No `file:` / workspace-link
+Consume the published package and pin `^0.2.5`. No `file:` / workspace-link
 consumption.
 
-### Popup-closed recovery is drive-sync's job
+### Popup cancellation
 
-drive-connect surfaces auth errors as-is. drive-sync already handles
-popup-closed recovery internally — don't add app-level retries on top.
+drive-connect surfaces auth errors as-is. A closed popup rejects with
+drive-sync's original `NeedsReauthError` (`reason: 'popup_closed'`); no silent
+follow-up or automatic retry occurs. An explicit Connect starts a fresh flow.
 
 ### Migrating from 0.1.x
 
@@ -202,7 +204,7 @@ popup-closed recovery internally — don't add app-level retries on top.
 - Delete any host code calling the removed methods.
 - Make sure `drive.activate()` is wired (see above) for cross-tab and warm-up
   freshness — without it the widget only updates on its own `connect()`/`disconnect()`.
-- Bump `@open-webapp/drive-sync` to `^0.8.0`.
+- Use `@open-webapp/drive-sync` `^0.11.0` or `^0.12.0`.
 
 ---
 

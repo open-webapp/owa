@@ -4,6 +4,8 @@ Structure / API / data flow: see `design.md`.
 
 Scope: user-visible behavior of `<GoogleDriveWidget />` and the `DriveAuthHandle` it reads (`auth.ts`).
 
+Package: `@open-webapp/drive-connect` v0.2.5; required peers: drive-sync `^0.11.0 || ^0.12.0`, React `^19`.
+
 ## Widget render states
 
 `<GoogleDriveWidget />` renders exactly one state block, driven by `connected` + `needsReauth` from `useDriveConnection`. Root element: `<div class="owa-drive-root">`.
@@ -39,7 +41,7 @@ Scope: user-visible behavior of `<GoogleDriveWidget />` and the `DriveAuthHandle
 - After a failed disconnect: widget still shows the Connected state; only `connecting`/`error` change, so the account is not visually dropped. Error `<p>` shows alongside the connected markup.
 - Connect timeout message: `Google auth timed out`.
 - Connect resolving with no connection: `No connection returned from Google Drive`.
-- A closed OAuth popup that drive-sync recovers from silently → connect still succeeds, no error shown. A popup-closed / auth error drive-sync cannot recover from → its message shows inline next to the re-enabled Connect button; drive-connect adds no retry of its own.
+- A closed OAuth popup rejects with drive-sync's original `NeedsReauthError` (`reason: 'popup_closed'`); its message shows inline. No silent follow-up or automatic retry; an explicit Connect starts a fresh flow.
 
 ## Status-freshness triggers
 
@@ -49,7 +51,7 @@ The widget's status refreshes when:
 
 - The drive-sync snapshot changes after any `connect()`/`disconnect()` — this tab's own, or another tab's. For this tab's own call, the re-read is already `await`ed by drive-sync before `connect()`/`disconnect()` resolves, so there is nothing left to wait for.
 - Drive-sync's background warm-up runs (wired via `activate()`).
-- A cross-tab logout/token broadcast arrives (**new:** cross-tab logout now propagates to the widget — disconnecting in one tab is reflected in another tab's widget).
+- A cross-tab logout/token broadcast arrives while host-wired `activate()` is active. A logout notification follows the other tab's clearing of shared storage; this tab re-reads that storage and updates the widget.
 
 `tokenValid` updates on that same notify cadence rather than being recomputed continuously — it is frozen between notifies (last connect/disconnect/warm-up/broadcast) rather than recomputed on every render.
 
@@ -69,7 +71,7 @@ There is no mount re-read, no `visibilitychange` handler in the widget, and no `
 
 A non-React host previously could call `auth.getStatus()`/`auth.subscribe()` directly; that capability is gone. A non-React host must now read `drive.project(id).getConnectionSync()`/`subscribeConnection()` itself and build its own `tokenValid`/overlay merge — drive-connect provides no equivalent outside React.
 
-`DriveAuthStatus` (the hook's underlying return shape) is unchanged in its 5-field meaning (`connected`, `email`, `connecting`, `error`, `needsReauth`).
+`DriveAuthStatus` is the internal 7-field merged snapshot (`connected`, `email`, `expiresAt`, `needsReauth`, `tokenValid`, `connecting`, `error`). The public hook returns only `connected`, `email`, `connecting`, `error`, `needsReauth`.
 
 ## Class-name hooks
 
