@@ -4,9 +4,10 @@ See `product-behavior.md` for user-visible behavior.
 
 ## Package
 
-- `@open-webapp/drive-connect` v0.2.0, `"type": "module"`.
+- `@open-webapp/drive-connect` v0.2.5, `"type": "module"`.
 - Exports: `.` → `dist/index.js` (types `dist/index.d.ts`); `./styles.css` → `dist/styles.css`.
-- Peers: `@open-webapp/drive-sync ^0.8.0`, `react ^19`.
+- Peers: `@open-webapp/drive-sync ^0.11.0 || ^0.12.0`, `react ^19` (both required).
+- Development: `@open-webapp/drive-sync ^0.12.0`, resolved to workspace v0.12.0.
 - Build: `tsc && cp src/styles.css dist/styles.css` (stylesheet copied, never bundled into JS).
 - Published `files`: `dist`, `README.md`, `design.md`, `product-behavior.md`.
 
@@ -173,7 +174,7 @@ Drive-sync is now the single source of truth for connection state — this packa
 - else → `return connect()` (shares `connectInFlight` guard and 10s timeout).
 
 ### `activate()`
-- Passthrough to `drive.activate()` (drive-sync facade-level; registers the single `visibilitychange` / `pageshow` warm-up listener pair across tracked project ids, and starts cross-tab broadcast listening). Returns drive-sync's disposer unchanged.
+- Passthrough to `drive.activate()` (drive-sync facade-level; registers `visibilitychange` / `pageshow` / `focus` warm-up listeners across tracked project ids, and starts cross-tab broadcast listening). Returns drive-sync's disposer unchanged.
 - Host-called only — no code in this package calls it; the widget does not call it on mount.
 
 ### Status subscription
@@ -190,7 +191,7 @@ Drive-sync is now the single source of truth for connection state — this packa
 - `beforeInteractive` wraps interactive `connect` / `disconnect` only, never `getConnection` / the cached `ensureFresh` path; default is identity.
 - CSS custom-property theming: `--owa-drive-*` with built-in fallbacks; no shipped `:root` block.
 - `classNames` bag prepends the host class and keeps the `owa-drive-*` class: `host ? \`${host} ${pkg}\` : pkg`.
-- Popup-closed recovery is delegated to drive-sync, not reimplemented here.
+- Popup cancellation rethrows drive-sync's original `NeedsReauthError` (`reason: 'popup_closed'`); no silent follow-up or automatic retry. A subsequent explicit Connect starts a fresh flow.
 - Errors render inline (`role="alert"`); never `window.alert`.
 
 ## Styling architecture
