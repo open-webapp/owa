@@ -2,16 +2,23 @@
 
 ## Layers
 
-- `core/`: framework-free. `types`, `events` (pure helpers/parsing), `fetch` (Google REST + `CalendarFetchError`), `sync` (per-calendar full/incremental), `reconcile` (selection, change application), `storage` (adapter types), `controller`.
-- `react/`: `CalendarPane`, `CalendarSelector`, `styles.css`. Consumes the controller via `subscribe`/`getEvents`.
+- `core/`: framework-free. `types`, `events` (pure helpers/parsing), `fetch` (Google REST, `CalendarFetchError`, `RefreshDeferredError`), `sync` (per-calendar full/incremental), `reconcile` (selection, change application), `storage` (adapter types), `controller`.
+- `react/`: `CalendarPane`, `CalendarSelector`, `styles.css`. Consumes the controller via `subscribe`/`getEvents`/`getState`.
 - `testing/`: shared fixtures and the storage contract, published as `./testing`.
 
 ## Decisions
 
 - Host owns tokens, storage and encryption: the package has no OAuth, IndexedDB or crypto dependency, so any app can adopt it.
 - Controller state is a per-source map; a single `publish()` rebuilds immutable snapshots (events, statuses) for `useSyncExternalStore`-style consumption.
-- Incremental sync via syncToken minimizes traffic; the 30-day window applies only to full syncs, and 410 falls back to one.
+- Cache-first: `hydrate()` publishes stored events before any network call, so the pane is useful immediately and offline.
+- Incremental sync via syncToken minimizes traffic; a full windowed sync runs when there is no token, no `lastFullSyncAt`, or the last full sync is over 24h old. 410 falls back to a full sync.
+- Selection is not forced to primary. The stored selection is honored when it still exists; otherwise primary (else first). At least one calendar always stays selected.
+- Deselecting a calendar retains its cached events and sync tokens; the read-time filter hides them. Re-selecting shows them at once.
+- Windowing happens twice: refresh prunes events that ended before now-30d; reads keep only events overlapping now-30d .. now+30d.
+- Per-calendar isolation: one failing calendar keeps its cache and token without affecting others. The error flag is raised only when every selected calendar errored and nothing is cached.
+- Deferred passes are quiet (no status or error change); the host drives `retryDeferred()`.
 - Network errors keep the prior status so offline use shows cached data without error banners.
-- Storage row stays compatible with legacy notesdiary rows (plain or encrypted); the contract harness locks that.
+- Storage row stays compatible with legacy notesdiary rows (plain or encrypted) and 0.1.0 rows; the contract harness locks that.
+- Event identity is multi-source (`sourceId:calendarId:eventId`); the one intentional divergence from notesdiary's `calendarId:eventId`.
 - `vitest` is an optional peer so non-test consumers install nothing extra.
 - CSS shipped as a copied file (`tsc && cp`), with no host variables required.

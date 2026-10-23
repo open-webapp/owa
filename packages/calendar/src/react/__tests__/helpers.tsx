@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type { CalendarController, SourceStatus } from '../../core/controller.js';
+import type { CalendarController, CalendarControllerState, SourceStatus } from '../../core/controller.js';
 import { DEFAULT_RSVP_STATUSES } from '../../core/events.js';
 import type { CalendarEvent, CalendarInfo, RsvpStatus, Source } from '../../core/types.js';
 
@@ -30,11 +30,12 @@ export interface FakeControllerOptions {
   status?: Record<string, SourceStatus>;
   calendars?: Record<string, CalendarInfo[]>;
   selected?: Record<string, string[]>;
+  state?: Partial<CalendarControllerState>;
 }
 
 /**
  * In-memory CalendarController. Selection is stateful and mimics the real
- * controller's rule that a source's primary calendar is always kept.
+ * controller's rule that at least one calendar stays selected.
  */
 export function createFakeController(opts: FakeControllerOptions): CalendarController {
   const listeners = new Set<() => void>();
@@ -47,12 +48,18 @@ export function createFakeController(opts: FakeControllerOptions): CalendarContr
   const notify = () => listeners.forEach((l) => l());
 
   async function setSelected(id: string, ids: string[]) {
-    const primary = (calendars[id] ?? []).find((c) => c.primary)?.id;
-    selected[id] = [...new Set(primary && !ids.includes(primary) ? [primary, ...ids] : ids)];
+    const next = [...new Set(ids)];
+    if (next.length === 0) return;
+    selected[id] = next;
     notify();
   }
 
+  const state: CalendarControllerState = { loading: false, error: false, deferred: false, lastSyncAt: null, ...opts.state };
+
   return {
+    hydrate: vi.fn(async () => {}),
+    retryDeferred: vi.fn(async () => {}),
+    getState: () => state,
     refresh: vi.fn(async () => {}),
     getEvents: () => events,
     getSourceStatus: () => status,
@@ -62,7 +69,9 @@ export function createFakeController(opts: FakeControllerOptions): CalendarContr
     getCalendars: (id) => calendars[id] ?? [],
     getSelectedIds: (id) => selected[id] ?? [],
     setSelectedIds: vi.fn(setSelected),
-    clearSelectedIds: vi.fn((id: string) => setSelected(id, [])),
+    clearSelectedIds: vi.fn((id: string) =>
+      setSelected(id, [(calendars[id] ?? []).find((c) => c.primary)?.id ?? 'primary']),
+    ),
     subscribe(l) {
       listeners.add(l);
       return () => listeners.delete(l);

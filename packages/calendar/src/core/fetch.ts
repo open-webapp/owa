@@ -11,6 +11,21 @@ export class CalendarFetchError extends Error {
   }
 }
 
+/** Thrown by a host's getToken when a token refresh was deferred (e.g. app inactive). Aborts a pass quietly. */
+export class RefreshDeferredError extends Error {
+  readonly deferred = true;
+  constructor(message = 'token refresh deferred') {
+    super(message);
+    this.name = 'RefreshDeferredError';
+  }
+}
+
+export function isRefreshDeferredError(e: unknown): boolean {
+  if (e instanceof RefreshDeferredError) return true;
+  const x = e as { deferred?: unknown; name?: unknown } | null | undefined;
+  return !!x && (x.deferred === true || x.name === 'RefreshDeferredError');
+}
+
 async function request(url: string, token: string): Promise<any> {
   let res: Response;
   try {

@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.2.0 is BREAKING.** See [Breaking changes in 0.2.0](#breaking-changes-in-020).
+
 ## Install
 
 ```bash
@@ -30,13 +32,18 @@ const controller = createCalendarController({
   storage,   // StorageAdapter
   crypto,    // CryptoAdapter
 });
-await controller.refresh();
+await controller.hydrate();  // publishes cached events immediately (no network)
+void controller.refresh();   // then syncs from Google
 
 <CalendarPane
   sources={sources}
   controller={controller}
   selectedRsvpStatuses={statuses}          // Set<RsvpStatus>
   onRsvpStatusesChange={setStatuses}
+  connected={connected}                    // optional, see CalendarPane props
+  needsReauth={needsReauth}
+  onConnect={connect}
+  onReconnect={reconnect}
 />
 ```
 
@@ -44,20 +51,57 @@ await controller.refresh();
 
 `createCalendarController({ sources, getToken, storage, crypto, now? })`
 
+- `hydrate(): Promise<void>` loads the stored rows and publishes cached events before any network call. Never throws. Offline, the cache stays visible.
 - `refresh(): Promise<void>` syncs every source in parallel; never throws.
-- `getEvents(): CalendarEvent[]` stable snapshot (updated on `refresh`/`setSelectedIds`), sources concatenated in `sources` order.
+- `retryDeferred(): Promise<void>` re-runs a refresh after a deferred pass (see [Deferred refresh](#deferred-refresh)).
+- `getEvents(): CalendarEvent[]` stable snapshot (updated on `hydrate`/`refresh`/`setSelectedIds`/`clearSelectedIds`), sources concatenated in `sources` order. Only events that pass the read-time filter are returned (see [Window](#window)).
+- `getState(): { loading, error, deferred, lastSyncAt }`:
+  - `loading`: a refresh pass is in flight.
+  - `error`: true only when every selected calendar (across sources) errored and nothing is cached.
+  - `deferred`: the last pass was deferred.
+  - `lastSyncAt`: ms epoch of the most recent refresh pass across sources, or `null`.
 - `getSourceStatus()` / `sourceStatus`: `Record<sourceId, 'ok' | 'needs-scope' | 'error'>`.
 - `getCalendars(sourceId)`, `getSelectedIds(sourceId)`.
-- `setSelectedIds(sourceId, ids)`: primary calendar is always kept; drops events/tokens of deselected calendars, persists, notifies.
-- `clearSelectedIds(sourceId)`: same as `setSelectedIds(sourceId, [])` (leaves primary only).
+- `setSelectedIds(sourceId, ids)`: see [Selection](#selection). Fetches calendars newly added to the selection; drops nothing it has cached for deselected calendars.
+- `clearSelectedIds(sourceId)`: resets the selection to the primary calendar.
 - `subscribe(listener): () => void`.
+
+### Selection
+
+- Default selection is the primary calendar.
+- On refresh, the stored selection is filtered to calendars that still exist. If none remain, the selection falls back to the primary calendar (else the first calendar).
+- Primary is not forced: a stored selection that omits primary is kept.
+- `setSelectedIds(id, [])` is ignored; at least one calendar always remains selected. Use `clearSelectedIds` to reset to primary.
+- `setSelectedIds` persists the selection and fetches any calendars newly added to it.
+- Deselecting a calendar keeps its cached events and sync tokens (retained, hidden by the read-time filter). Re-selecting it shows the cache immediately and syncs it.
 
 ### sourceStatus
 
-- `ok`: last refresh succeeded (also the initial value).
+- `ok`: last refresh succeeded, or only some calendars failed (also the initial value).
 - `needs-scope`: Google returned 403 `insufficientPermissions`; the host should prompt re-consent.
 - `error`: any other failure (401, 5xx, non-403 HTTP, unexpected exception).
 - Network failures leave the previous status unchanged and keep cached events.
+
+### Deferred refresh
+
+- A host `getToken` (or fetch path) may throw `RefreshDeferredError`, or any error with `deferred: true`. `isRefreshDeferredError(e)` recognises both.
+- A deferred pass is quiet: it does not change `sourceStatus`, does not set `getState().error`, and is not retried immediately. `getState().deferred` becomes `true`; the host calls `retryDeferred()` when it is ready.
+
+## Sync behavior
+
+Per calendar:
+
+- Full (windowed) sync when there is no sync token, no `lastFullSyncAt` for that calendar, or the last full sync is more than 24h old. Full sync uses `singleEvents=true`, window now -30d .. now +30d (RFC3339, no milliseconds), all pages (`maxResults=250`), and stores `nextSyncToken` and `lastFullSyncAt`.
+- Otherwise incremental with `syncToken` (no time bounds); cancelled items remove events.
+- HTTP 410 (`gone`): token dropped, full windowed resync.
+- A failing calendar is retried once immediately (deferred errors are not retried).
+- Calendars are isolated: one failing calendar keeps its cached events and token; other calendars and sources are unaffected.
+- Per-source status: if some targeted calendars succeed and none reports a scope error, the source is `ok` (failed calendars keep their cached events). A scope error gives `needs-scope`. If every targeted calendar fails, the status follows the `sourceStatus` rules above (`error` for non-network failures, unchanged on network-only failures).
+
+### Window
+
+- Stored events whose end is strictly before now -30d are pruned on refresh.
+- Read-time filter (`getEvents()`): events on deselected calendars are hidden; events are kept when they end after now -30d and start before now +30d (edges excluded, overlaps kept).
 
 ## Adapters
 
@@ -69,11 +113,17 @@ interface StorageAdapter {
   clear(sourceId): Promise<void>;
 }
 interface StorageRow { events: CalendarEvent[] | string | unknown[]; syncState: SyncState | string | null | unknown; selectedIds: string[] }
-interface SyncState { tokens: Record<calendarId, string> }
+interface SyncState {
+  tokens: Record<calendarId, string>;
+  lastFullSyncAt?: Record<calendarId, number>; // ms epoch; absent on 0.1.0 rows
+  lastSyncAt?: number;                         // ms epoch; absent on 0.1.0 rows
+}
 interface CryptoAdapter { encrypt(s: string): Promise<string>; decrypt(s: string): Promise<string> }
 ```
 
 The controller writes `events` and `syncState` as `crypto.encrypt(JSON.stringify(...))` strings and `selectedIds` as a plain array. On read, string values are decrypted and parsed; non-string (legacy plain) values are used as-is. Corrupt rows or decrypt failures read back as empty.
+
+Rows written by 0.1.0 (no `lastFullSyncAt`/`lastSyncAt`, no retained-calendar data) still read. A missing `lastFullSyncAt` triggers one full windowed sync on the next refresh.
 
 ### Contract harness
 
@@ -84,12 +134,9 @@ runStorageAdapterContract(() => ({ storage, crypto, seedRaw?, wrongKeyCrypto?, e
 
 Call at top level of a vitest file; it registers a `describe('StorageAdapter contract')` suite (round trip, source isolation, delete/clear, missing source, legacy plain row, legacy encrypted fixture, corrupt row, wrong key).
 
-## Sync behavior
+### Event key
 
-- First sync per calendar: full fetch, `singleEvents=true`, window now -30d .. now +30d (RFC3339, no milliseconds), all pages (`maxResults=250`); stores `nextSyncToken`.
-- Later syncs: incremental with `syncToken` (no time bounds); cancelled items remove events.
-- HTTP 410: token dropped, full windowed resync.
-- Several sources are fetched independently; one failing source does not affect others.
+`getCalendarEventKey(event)` returns `${sourceId}:${calendarId}:${eventId}` (e.g. `src1:calA:ev1`). This multi-source form is the one intentional divergence from notesdiary (`calA:ev1`), kept by decision for multi-source.
 
 ## UI
 
@@ -102,14 +149,26 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `selectedRsvpStatuses` | `Set<RsvpStatus>` | filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative, needsAction |
 | `onRsvpStatusesChange` | `(next) => void` | |
 | `renderEventAction?` | `(event) => ReactNode` | per-event slot |
-| `emptyState?` | `ReactNode` | shown when no sources are connected |
-| `sourceNotice?` | `(source) => ReactNode` | per-source slot (e.g. re-consent button when `needs-scope`) |
+| `connected?` | `boolean` | defaults to `sources.length > 0` (back-compat). `false` shows the not-connected block |
+| `needsReauth?` | `boolean` | defaults to every source being `needs-scope`. Shows the reauth block |
+| `onConnect?` | `() => void` | wired to the built-in "Connect Google Calendar" button |
+| `onReconnect?` | `() => void` | wired to the built-in "Reconnect to restore sync" button |
+| `emptyState?` | `ReactNode` | replaces the built-in not-connected block |
+| `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
 | `onClose?` | `() => void` | |
 | `popupName?` | `string` | `window.open` name for the event popup (default `notesdiary-cal-event`) |
 
+Built-in copy (overridable only through the slots above):
+
+- Not connected: "Not connected to Google Calendar." with "Connect Google Calendar".
+- Reauth: "Calendar connection needs reauthorization." with "Reconnect to restore sync".
+- Error with nothing cached: "Couldn't load calendar events. Try again shortly."
+- Loading: "Loading calendar…".
+- Empty: "No matching events in the next 30 days".
+
 ### CalendarSelector props
 
-`calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use). It has no slot props or `popupName`. At least one calendar stays selected; "Clear" resets to the primary calendar.
+`calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
 
 ### Host CSS
 
@@ -118,3 +177,12 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 - `--calendar-footer-height` (default `64px`, set on `.calendar-pane`; override to match host footer)
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
+
+## Breaking changes in 0.2.0
+
+BREAKING (0.1.0 to 0.2.0):
+
+- **Selection semantics.** Primary is no longer forced into the selection. Stored selections are honored (filtered to existing calendars). `setSelectedIds` no longer always adds primary, and an empty list is ignored. `clearSelectedIds` resets to primary.
+- **Cache and storage rows.** `setSelectedIds` no longer drops events and sync tokens of deselected calendars; they are retained. `syncState` gains optional `lastFullSyncAt` and `lastSyncAt`. Window pruning and the read-time window filter are new. 0.1.0 rows still read (missing fields take their defaults).
+- **Pane behavior.** `CalendarPane` gains `connected`, `needsReauth`, `onConnect`, `onReconnect`. Omitting `connected` keeps the old behavior (`sources.length > 0`). Deferred refreshes are quiet. `getState()` and `hydrate()` are new; hosts that want cache-first display should call `hydrate()` before `refresh()`.
+- Unchanged: event key form (`src1:calA:ev1`), `sourceStatus` values, `StorageAdapter`/`CryptoAdapter` signatures.

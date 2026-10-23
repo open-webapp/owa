@@ -1,3 +1,4 @@
+// The `src1:calA:ev1` event key literal is the one intentional divergence from notesdiary (`calA:ev1`), kept by decision for multi-source.
 import { describe, it, expect } from 'vitest';
 import type { CalendarEvent, CalendarInfo } from '../types';
 import {

@@ -232,15 +232,15 @@ describe('selected calendar reconcile (per source)', () => {
     await seed(storage, 'a', ['work', 'deleted-cal']);
     const { controller } = setup([A], twoCals, storage);
     await controller.refresh();
-    expect(controller.getSelectedIds('a').sort()).toEqual(['primary', 'work']);
+    expect(controller.getSelectedIds('a').sort()).toEqual(['work']);
   });
 
-  it('always keeps primary even if stored selection omits it', async () => {
+  it('keeps a stored selection that omits primary (primary is not forced)', async () => {
     const storage = makeFakeStorage();
     await seed(storage, 'a', ['work']);
     const { controller } = setup([A], twoCals, storage);
     await controller.refresh();
-    expect(controller.getSelectedIds('a')).toContain('primary');
+    expect(controller.getSelectedIds('a')).toEqual(['work']);
   });
 
   it('Clear keeps primary, only for the given source', async () => {
@@ -252,5 +252,39 @@ describe('selected calendar reconcile (per source)', () => {
     await controller.clearSelectedIds('a');
     expect(controller.getSelectedIds('a')).toEqual(['primary']);
     expect(controller.getSelectedIds('b').sort()).toEqual(['primary', 'work']);
+  });
+});
+
+describe('selection change syncs only newly added calendars (G8)', () => {
+  it('reselecting a calendar fetches only that calendar', async () => {
+    const log = installFakeFetch((_r, u) => {
+      if (u.pathname.endsWith('/calendarList'))
+        return {
+          status: 200,
+          body: {
+            items: [
+              { id: 'primary', summary: 'p', primary: true, accessRole: 'owner' },
+              { id: 'work', summary: 'w', accessRole: 'owner' },
+            ],
+          },
+        };
+      return { status: 200, body: { items: [], nextSyncToken: 'T' } };
+    });
+    const c = createCalendarController({
+      sources: [A],
+      getToken: async () => 't',
+      storage: makeFakeStorage(),
+      crypto,
+      now: () => NOW,
+    });
+    await c.refresh();
+    await c.setSelectedIds('a', ['primary', 'work']);
+    log.length = 0;
+    await c.setSelectedIds('a', ['primary']);
+    expect(log).toHaveLength(0);
+    await c.setSelectedIds('a', ['primary', 'work']);
+    const ev = log.filter((r) => r.url.includes('/events'));
+    expect(ev).toHaveLength(1);
+    expect(decodeURIComponent(ev[0].url)).toContain('/calendars/work/events');
   });
 });
