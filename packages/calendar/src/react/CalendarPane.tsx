@@ -36,6 +36,12 @@ export interface CalendarPaneProps {
   emptyState?: ReactNode;
   sourceNotice?: (source: Source) => ReactNode;
   onClose?: () => void;
+  /** Whether Google Calendar is connected. Defaults to `sources.length > 0`. */
+  connected?: boolean;
+  /** Whether the connection needs reauthorization. Defaults to all sources being 'needs-scope'. */
+  needsReauth?: boolean;
+  onConnect?: () => void;
+  onReconnect?: () => void;
   /** Window name used for the event popup. */
   popupName?: string;
 }
@@ -162,13 +168,17 @@ export function CalendarPane(props: CalendarPaneProps) {
     setVersion((v) => v + 1);
     return unsubscribe;
   }, [controller]);
+  useEffect(() => {
+    if (typeof controller.hydrate === 'function') void Promise.resolve(controller.hydrate()).catch(() => {});
+  }, [controller]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const events = useMemo(() => controller.getEvents(), [controller, version]);
   const statuses = controller.getSourceStatus();
-  const connected = sources.length > 0;
+  const connected = props.connected ?? sources.length > 0;
+  const ctrlState = controller.getState();
   const multi = sources.length >= 2;
   const needsScopeSources = sources.filter((s) => statuses[s.id] === 'needs-scope');
-  const needsReauth = connected && needsScopeSources.length === sources.length;
+  const needsReauth = connected && (props.needsReauth ?? (sources.length > 0 && needsScopeSources.length === sources.length));
   const sourceColor = (id: string) => SOURCE_COLORS[Math.max(0, sources.findIndex((s) => s.id === id)) % SOURCE_COLORS.length];
   const sourceEmail = (id: string) => sources.find((s) => s.id === id)?.email ?? '';
   const todayIso = toIsoDate(new Date());
@@ -342,7 +352,16 @@ export function CalendarPane(props: CalendarPaneProps) {
   if (!connected) {
     return (
       <div className="calendar-pane">
-        <div className="calendar-pane-prompt">{props.emptyState}</div>
+        <div className="calendar-pane-prompt">
+          {props.emptyState ?? (
+            <>
+              <p>Not connected to Google Calendar.</p>
+              <button className="calendar-connect-button" onClick={props.onConnect}>
+                Connect Google Calendar
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -351,9 +370,16 @@ export function CalendarPane(props: CalendarPaneProps) {
     return (
       <div className="calendar-pane">
         <div className="calendar-pane-prompt">
-          {needsScopeSources.map((s) => (
-            <div key={s.id}>{props.sourceNotice?.(s)}</div>
-          ))}
+          {props.sourceNotice && needsScopeSources.length > 0 ? (
+            needsScopeSources.map((s) => <div key={s.id}>{props.sourceNotice?.(s)}</div>)
+          ) : (
+            <>
+              <p>Calendar connection needs reauthorization.</p>
+              <button className="calendar-connect-button" onClick={props.onReconnect}>
+                Reconnect to restore sync
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -362,8 +388,8 @@ export function CalendarPane(props: CalendarPaneProps) {
   const sourcesWithEvents = new Set(filteredEvents.map((e) => e.sourceId));
   const hasErrorWithoutEvents = sources.some((s) => statuses[s.id] === 'error' && !sourcesWithEvents.has(s.id));
   const calendarSources = sources.filter((s) => controller.getCalendars(s.id).length > 0);
-  const error = hasErrorWithoutEvents;
-  const loading = false;
+  const error = hasErrorWithoutEvents || (ctrlState.error && filteredEvents.length === 0);
+  const loading = ctrlState.loading && filteredEvents.length === 0;
 
   const emptyStateText = 'No matching events in the next 30 days';
 
@@ -405,7 +431,7 @@ export function CalendarPane(props: CalendarPaneProps) {
       {needsScopeSources.map((s) => (
         <div key={s.id}>{props.sourceNotice?.(s)}</div>
       ))}
-      {!loading && error && (
+      {error && (
         <div className="empty-state calendar-empty-state" role="alert">
           <p>Couldn't load calendar events. Try again shortly.</p>
         </div>
@@ -552,7 +578,8 @@ export function CalendarPane(props: CalendarPaneProps) {
               })}
             </div>
           ))}
-          {filteredEvents.length === 0 && !error && needsScopeSources.length === 0 && <p className="calendar-empty-state-text">{emptyStateText}</p>}
+          {loading && <p className="calendar-empty-state-text">Loading calendar…</p>}
+          {filteredEvents.length === 0 && !loading && !error && needsScopeSources.length === 0 && <p className="calendar-empty-state-text">{emptyStateText}</p>}
         </div>
       )}
       </div>

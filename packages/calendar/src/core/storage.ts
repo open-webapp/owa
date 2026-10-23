@@ -3,6 +3,10 @@ import type { CalendarEvent } from './types.js';
 export interface SyncState {
   /** Per-calendar incremental sync tokens. */
   tokens: Record<string, string>;
+  /** Per-calendar ms epoch of last full sync (optional; absent on 0.1.0 rows). */
+  lastFullSyncAt?: Record<string, number>;
+  /** ms epoch of last successful sync pass (optional; absent on 0.1.0 rows). */
+  lastSyncAt?: number;
 }
 
 /** Persisted per-source row. `events` is an encrypted JSON string when written by the controller. */

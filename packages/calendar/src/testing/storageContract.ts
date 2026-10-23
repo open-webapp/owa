@@ -106,7 +106,7 @@ export function runStorageAdapterContract(factory: () => StorageContractHarness 
 
     it('missing source reads back as empty', async () => {
       const h = await factory();
-      expect(await readBack(h)).toEqual({ events: [], selected: [] });
+      expect(await readBack(h)).toEqual({ events: [], selected: ['primary'] });
     });
 
     it('reads a legacy plain (unencrypted) row', async () => {
@@ -127,10 +127,18 @@ export function runStorageAdapterContract(factory: () => StorageContractHarness 
       expect(out.selected).toEqual(['cal']);
     });
 
+    it('reads a 0.1.0 row that has no lastFullSyncAt/lastSyncAt fields', async () => {
+      const h = await factory();
+      await seed(h, 'src', { events: [LEGACY_EVENT], syncState: { tokens: { cal: 't' } }, selectedIds: ['cal'] });
+      const out = await readBack(h);
+      expect(out.events).toEqual([LEGACY_EVENT]);
+      expect(out.selected).toEqual(['cal']);
+    });
+
     it('a corrupt row reads back empty without throwing', async () => {
       const h = await factory();
       await seed(h, 'src', h.corruptRow ?? { events: '%%not-json%%', syncState: '{{', selectedIds: 'bad' as unknown as string[] });
-      await expect(readBack(h)).resolves.toEqual({ events: [], selected: [] });
+      await expect(readBack(h)).resolves.toEqual({ events: [], selected: ['primary'] });
     });
 
     it('a wrong key reads back empty without throwing', async () => {
@@ -141,7 +149,7 @@ export function runStorageAdapterContract(factory: () => StorageContractHarness 
         syncState: await h.crypto.encrypt(JSON.stringify({ tokens: {} })),
         selectedIds: [],
       });
-      await expect(readBack(h, h.wrongKeyCrypto)).resolves.toEqual({ events: [], selected: [] });
+      await expect(readBack(h, h.wrongKeyCrypto)).resolves.toEqual({ events: [], selected: ['primary'] });
     });
   });
 }

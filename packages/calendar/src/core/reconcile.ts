@@ -2,12 +2,9 @@ import { reconcileSelectedCalendarIds } from './events.js';
 import { parseEvent } from './events.js';
 import type { CalendarEvent, CalendarInfo } from './types.js';
 
-/** Stored selection filtered to existing calendars; the primary calendar is always included. */
+/** Stored selection filtered to existing calendars; falls back to primary (else first). Primary is not forced. */
 export function reconcileSelection(stored: string[] | null, calendars: CalendarInfo[]): string[] {
-  const ids = reconcileSelectedCalendarIds(stored, calendars);
-  const primary = calendars.find((c) => c.primary);
-  if (primary && !ids.includes(primary.id)) ids.unshift(primary.id);
-  return ids;
+  return reconcileSelectedCalendarIds(stored, calendars);
 }
 
 /** Applies an incremental page of raw items to one calendar's events (cancelled items remove). */
