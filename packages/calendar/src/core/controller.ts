@@ -219,10 +219,13 @@ export function createCalendarController(opts: CalendarControllerOptions): Calen
 
   async function runPass(only?: Record<string, string[]>) {
     loadingCount++;
+    publish();
     try {
       const ids = sources.map((s) => s.id).filter((id) => !only || only[id]);
       const results = await Promise.all(ids.map((id) => refreshSource(id, only?.[id])));
-      deferred = results.some(Boolean);
+      const any = results.some(Boolean);
+      if (!only) deferred = any;
+      else if (any) deferred = true;
     } catch {
       /* never throws */
     } finally {

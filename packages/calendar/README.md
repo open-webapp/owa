@@ -178,6 +178,10 @@ Built-in copy (overridable only through the slots above):
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
+## 0.2.1 (patch)
+
+Fixes only, no behavior contract change: `getState().loading` is now published while a sync pass is in flight; a selection-change (partial) pass no longer clears `deferred` set by an earlier full pass; `CalendarPane` tolerates controllers without `getState`/`hydrate`.
+
 ## Breaking changes in 0.2.0
 
 BREAKING (0.1.0 to 0.2.0):
