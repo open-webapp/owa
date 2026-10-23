@@ -2,7 +2,7 @@
 
 ## Auto-committing package changes
 
-When you modify files under `packages/drive-sync`, `packages/project-sync`, or `packages/drive-connect` as part of a task, commit those changes without waiting to be asked. Branch off `main`, commit with a descriptive message, run the affected package's tests and `scripts/check-contracts.sh` locally, push the branch, and open a PR against `main`. Do NOT merge to `main` locally or push to `main` directly.
+When you modify files under `packages/drive-sync`, `packages/project-sync`, `packages/drive-connect`, or `packages/calendar` as part of a task, commit those changes without waiting to be asked. Branch off `main`, commit with a descriptive message, run the affected package's tests and `scripts/check-contracts.sh` locally, push the branch, and open a PR against `main`. Do NOT merge to `main` locally or push to `main` directly.
 
 ### PR checks gate merging
 
@@ -11,11 +11,11 @@ After opening (or updating) a PR, wait for its checks to finish: poll `gh pr che
 - **Any check fails (or none ever report):** do NOT merge or tag. Report to the user which check failed, with the relevant log lines (`gh run view --log-failed`), and stop for their direction.
 - Never merge with failing, pending, or skipped required checks, and never bypass or disable a check to get green.
 
-This is a standing instruction: treat "the change is made" as "commit, open PR, wait for checks, merge, tag, and push" for these three packages. Changes that touch no package (e.g. CI only) follow the same PR flow but need no tag.
+This is a standing instruction: treat "the change is made" as "commit, open PR, wait for checks, merge, tag, and push" for these four packages. Changes that touch no package (e.g. CI only) follow the same PR flow but need no tag.
 
 ## Auto-tagging on commit
 
-When committing changes to `packages/drive-sync` or `packages/project-sync`, automatically create and push a git tag matching the corresponding version pattern to trigger the publish workflow.
+When committing changes to `packages/drive-sync`, `packages/project-sync`, `packages/drive-connect`, or `packages/calendar`, automatically create and push a git tag matching the corresponding version pattern to trigger the publish workflow.
 
 **For drive-sync:** After creating a commit to `packages/drive-sync`, extract the version from `packages/drive-sync/package.json` and run:
 ```bash
@@ -33,6 +33,12 @@ git push origin project-sync-v<version>
 ```bash
 git tag drive-connect-v<version>
 git push origin drive-connect-v<version>
+```
+
+**For calendar:** After creating a commit to `packages/calendar`, extract the version from `packages/calendar/package.json` and run:
+```bash
+git tag calendar-v<version>
+git push origin calendar-v<version>
 ```
 
 This automates the release process by triggering the publish workflow without manual tag creation. Each package has its own independent versioning and release lifecycle.
