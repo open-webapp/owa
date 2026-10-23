@@ -15,6 +15,16 @@ import { CalendarSelector } from './CalendarSelector.js';
 
 export type RsvpSelection = Set<RsvpStatus>;
 
+function toggleRsvpStatus(selection: Iterable<RsvpStatus>, status: RsvpStatus): RsvpSelection {
+  const next = new Set(selection);
+  if (next.has(status)) {
+    next.delete(status);
+  } else {
+    next.add(status);
+  }
+  return next.size === 0 ? new Set(DEFAULT_RSVP_STATUSES) : next;
+}
+
 function useWindowWidth(): number {
   const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   useEffect(() => {
@@ -79,20 +89,20 @@ const RSVP_CHIPS: { status: RsvpStatus; label: string; icon: JSX.Element }[] = [
     ),
   },
   {
-    status: 'needsAction',
-    label: 'Unaccepted',
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <circle cx="7.5" cy="7.5" r="4.3" stroke="currentColor" strokeWidth="1.4" />
-      </svg>
-    ),
-  },
-  {
     status: 'declined',
     label: 'Declined',
     icon: (
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
         <path d="M4 4L11 11M11 4L4 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    status: 'needsAction',
+    label: 'Unaccepted',
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+        <circle cx="7.5" cy="7.5" r="4.3" stroke="currentColor" strokeWidth="1.4" />
       </svg>
     ),
   },
@@ -192,6 +202,17 @@ export function CalendarPane(props: CalendarPaneProps) {
   const chipsRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [savedSelection, setSavedSelection] = useState<Set<RsvpStatus> | null>(null);
+  const isExclusive = selectedRsvpStatuses.size === 1 && selectedRsvpStatuses.has('needsAction');
+
+  useEffect(() => {
+    if (!isExclusive && savedSelection !== null) setSavedSelection(null);
+  }, [isExclusive, savedSelection]);
+
+  const unacceptedCount = useMemo(
+    () => events.filter((event) => event.selfResponseStatus === 'needsAction').length,
+    [events]
+  );
 
   const filteredEvents = useMemo(
     () => filterByRsvp(events, selectedRsvpStatuses),
@@ -218,18 +239,20 @@ export function CalendarPane(props: CalendarPaneProps) {
   const selectedEventKey = currentEventKeys.values().next().value ??
     (nextUpcomingEvent ? getCalendarEventKey(nextUpcomingEvent) : undefined);
 
-  function handleToggle(status: RsvpStatus) {
-    const next = new Set(selectedRsvpStatuses);
-    if (next.has(status)) {
-      next.delete(status);
-      if (next.size === 0) {
-        props.onRsvpStatusesChange(new Set(DEFAULT_RSVP_STATUSES));
-        return;
-      }
+  function handleUnaccepted() {
+    if (isExclusive) {
+      props.onRsvpStatusesChange(savedSelection ?? new Set(DEFAULT_RSVP_STATUSES));
+      setSavedSelection(null);
     } else {
-      next.add(status);
+      setSavedSelection(new Set(selectedRsvpStatuses));
+      props.onRsvpStatusesChange(new Set<RsvpStatus>(['needsAction']));
     }
-    props.onRsvpStatusesChange(next);
+  }
+
+  function handleToggle(status: RsvpStatus) {
+    const base = isExclusive ? savedSelection ?? DEFAULT_RSVP_STATUSES : selectedRsvpStatuses;
+    if (isExclusive) setSavedSelection(null);
+    props.onRsvpStatusesChange(toggleRsvpStatus(base, status));
   }
   const dayGroups = groupByDay(filteredEvents, todayIso);
 
@@ -420,13 +443,18 @@ export function CalendarPane(props: CalendarPaneProps) {
           <button
             key={chip.status}
             type="button"
-            className={`calendar-rsvp-chip${selectedRsvpStatuses.has(chip.status) ? ' selected' : ''}`}
-            aria-pressed={selectedRsvpStatuses.has(chip.status)}
-            aria-label={chip.label}
-            title={chip.label}
-            onClick={() => handleToggle(chip.status)}
+            className={`calendar-rsvp-chip${(chip.status === 'needsAction' ? isExclusive : selectedRsvpStatuses.has(chip.status)) ? ' selected' : ''}`}
+            aria-pressed={chip.status === 'needsAction' ? isExclusive : selectedRsvpStatuses.has(chip.status)}
+            aria-label={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
+            title={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
+            onClick={() => chip.status === 'needsAction' ? handleUnaccepted() : handleToggle(chip.status)}
           >
             {chip.icon}
+            {chip.status === 'needsAction' && (
+              <span className="calendar-rsvp-chip-badge" aria-hidden="true">
+                {unacceptedCount > 99 ? '99+' : unacceptedCount}
+              </span>
+            )}
           </button>
         ))}
       </div>

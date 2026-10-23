@@ -158,6 +158,14 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `onClose?` | `() => void` | |
 | `popupName?` | `string` | `window.open` name for the event popup (default `notesdiary-cal-event`) |
 
+#### RSVP chips
+
+The chips appear in order: Accepted, Maybe, Declined, Unaccepted. Accepted, Maybe, and Declined toggle individual statuses; an empty selection falls back to `DEFAULT_RSVP_STATUSES` (accepted, tentative, needsAction).
+
+Unaccepted is an exclusive shortcut: clicking it selects only `needsAction`, saving the previous selection locally in the pane. Clicking it again restores that selection, or the defaults when no saved selection is available. Toggling another chip while exclusive mode is active applies that toggle to the saved selection (or defaults). An external nonexclusive selection clears the saved selection. Unaccepted is pressed only when the selection is exactly `needsAction`; a mixed selection containing `needsAction` does not press it.
+
+The Unaccepted badge is always visible, including at zero. It counts `needsAction` events from the controller's selected-calendar, rolling ±30-day snapshot before RSVP filtering. Visible counts cap at `99+`; the chip's `aria-label` and `title` expose the full count.
+
 Built-in copy (overridable only through the slots above):
 
 - Not connected: "Not connected to Google Calendar." with "Connect Google Calendar".
@@ -177,6 +185,14 @@ Built-in copy (overridable only through the slots above):
 - `--calendar-footer-height` (default `64px`, set on `.calendar-pane`; override to match host footer)
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
+
+The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
+
+## 0.3.0 (minor, additive)
+
+- Adds the Unaccepted exclusive shortcut after Accepted, Maybe, and Declined, with local selection restoration and default fallback as described above.
+- Adds an always-visible Unaccepted count badge, including zero, computed before RSVP filtering from the controller's selected-calendar ±30-day snapshot. Counts above 99 display `99+`, with the full count in the chip's `aria-label` and `title`.
+- Adds the `.calendar-rsvp-chip-badge` host styling hook. Public props and default RSVP statuses remain compatible.
 
 ## 0.2.1 (patch)
 

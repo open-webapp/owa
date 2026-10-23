@@ -5,7 +5,9 @@ Source of truth: `notesdiary/product-behavior.md`, "Google Calendar" section. Th
 ## Package
 
 - Window: rolling 30 days back to 30 days ahead; empty state "No matching events in the next 30 days". Events are shown when they overlap the window (end after now-30d, start before now+30d).
-- RSVP filter toggles (Accepted, Maybe, Unaccepted, Declined), independent, default Accepted+Maybe+Unaccepted; Declined is a normal status. Zero-selected snaps back to the default.
+- RSVP chips appear in order Accepted, Maybe, Declined, Unaccepted. Accepted, Maybe, and Declined toggle individual statuses; zero-selected snaps back to the default (accepted, tentative, needsAction).
+- Unaccepted is an exclusive shortcut, pressed only for exactly `needsAction` (not a mixed selection containing it). Entering exclusive mode saves the previous selection locally in the pane; clicking again restores it, or the defaults if unavailable. Another chip toggles against the saved selection or defaults. An external nonexclusive selection clears the saved selection.
+- Unaccepted always shows a count badge, including zero, counting `needsAction` events from the controller's selected-calendar ±30-day snapshot before RSVP filtering. Visible counts cap at `99+`; the chip's `aria-label` and `title` expose the full count. Badge CSS class: `.calendar-rsvp-chip-badge`.
 - Scroll-to-today button; initial recenter on current -> next upcoming -> today; current-event highlight; idle autoscroll.
 - Sticky RSVP row with day headers pinned beneath it (offset via `--chip-row-height`).
 - Day headers: "Today · {Month Day}", "Tomorrow · {Month Day}", else "{Month Day}" (year when different); today always rendered.
