@@ -68,12 +68,16 @@
 }
 
 .calendar-rsvp-chip {
-  width: 32px;
+  width: auto;
+  min-width: 32px;
   height: 32px;
+  box-sizing: border-box;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 4px;
+  padding: 0 8px;
   background: transparent;
   color: #333;
   border: 1px solid #ccc;
@@ -95,6 +99,19 @@
   background: #081a59;
   color: #ffffff;
   border-color: #081a59;
+}
+
+.calendar-rsvp-chip-badge {
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: #e8eefb;
+  color: #081a59;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .calendar-empty-state {
@@ -304,6 +321,11 @@
     background: #22d0ef;
     color: #081a59;
     border-color: #22d0ef;
+  }
+
+  .calendar-rsvp-chip-badge {
+    background: #081a59;
+    color: #e8eefb;
   }
 
   .calendar-day-header {

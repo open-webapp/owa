@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { within } from '@testing-library/react';
 import { CalendarPane } from '../CalendarPane.js';
 import { DEFAULT_RSVP_STATUSES } from '../../core/events.js';
 import type { CalendarEvent, CalendarInfo } from '../../core/types.js';
@@ -28,6 +30,254 @@ describe('CalendarPane', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe('Unaccepted chip', () => {
+    function needsActionEvents(count: number) {
+      return Array.from({ length: count }, (_, index) => makeEvent({
+        id: `needs-action-${index}`,
+        selfResponseStatus: 'needsAction',
+      }));
+    }
+
+    it('renders chips in DOM order Accepted, Maybe, Declined, Unaccepted last', () => {
+      render(<CalendarPane {...baseProps()} />);
+
+      const chips = screen.getAllByRole('button', { name: /^(Accepted|Maybe|Declined|Unaccepted)(\s*\(\d+\))?$/ });
+      expect(chips).toEqual([
+        screen.getByRole('button', { name: 'Accepted' }),
+        screen.getByRole('button', { name: 'Maybe' }),
+        screen.getByRole('button', { name: 'Declined' }),
+        screen.getByRole('button', { name: /^Unaccepted/ }),
+      ]);
+    });
+
+    it('names the button Unaccepted (3) for three needsAction events', () => {
+      render(<CalendarPane {...baseProps({ events: needsActionEvents(3) })} />);
+
+      expect(screen.getByRole('button', { name: 'Unaccepted (3)' })).toBeInTheDocument();
+    });
+
+    it('still renders Unaccepted (0) when no events need action', () => {
+      render(<CalendarPane {...baseProps({ events: [makeEvent({ selfResponseStatus: 'accepted' })] })} />);
+
+      expect(screen.getByRole('button', { name: 'Unaccepted (0)' })).toBeInTheDocument();
+    });
+
+    it.each([
+      [100, '99+', 'Unaccepted (100)'],
+      [99, '99', 'Unaccepted (99)'],
+    ])('shows the badge for %i needsAction events with the full accessible count', (count, badge, name) => {
+      render(<CalendarPane {...baseProps({ events: needsActionEvents(count) })} />);
+
+      const chip = screen.getByRole('button', { name });
+      expect(within(chip).getByText(badge, { exact: true })).toBeVisible();
+    });
+
+    it('counts three needsAction events even when only Accepted is selected', () => {
+      render(<CalendarPane {...baseProps({
+        events: needsActionEvents(3),
+        selectedRsvpStatuses: new Set(['accepted']),
+      })} />);
+
+      expect(screen.getByRole('button', { name: 'Unaccepted (3)' })).toBeInTheDocument();
+    });
+
+    it('counts only the two needsAction events among accepted and declined events', () => {
+      render(<CalendarPane {...baseProps({ events: [
+        ...needsActionEvents(2),
+        makeEvent({ id: 'accepted', selfResponseStatus: 'accepted' }),
+        makeEvent({ id: 'declined', selfResponseStatus: 'declined' }),
+      ] })} />);
+
+      expect(screen.getByRole('button', { name: 'Unaccepted (2)' })).toBeInTheDocument();
+    });
+
+    it('does not count a needsAction event after its calendar is deselected', () => {
+      const events = [
+        makeEvent({ id: 'personal', summary: 'Personal invitation', calendarId: 'primary', selfResponseStatus: 'needsAction' }),
+        makeEvent({ id: 'team', summary: 'Team invitation', calendarId: 'team', selfResponseStatus: 'needsAction' }),
+      ];
+      const props = baseProps({
+        calendars: [
+          { id: 'primary', summary: 'Primary', primary: true },
+          { id: 'team', summary: 'Team', primary: false },
+        ],
+        selectedCalendarIds: ['primary', 'team'],
+      });
+      // Host fixture: unlike the shared fake, expose only selected-calendar events.
+      props.controller.getEvents = () => events.filter((event) =>
+        props.controller.getSelectedIds(event.sourceId).includes(event.calendarId!),
+      );
+      render(<CalendarPane {...props} />);
+      expect(screen.getByRole('link', { name: 'Team invitation' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('combobox'));
+      fireEvent.click(screen.getByRole('option', { name: 'Team' }));
+
+      expect(screen.queryByRole('link', { name: 'Team invitation' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Personal invitation' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Unaccepted (1)' })).toBeInTheDocument();
+    });
+
+    it.each([
+      ['empty', []],
+      ['undefined-equivalent', undefined],
+    ] as const)('renders Unaccepted (0) without throwing for %s events', (_label, events) => {
+      // Omitted/undefined host events normalize to [] in the controller fixture.
+      expect(() => render(<CalendarPane {...baseProps({ events: events ? [...events] : undefined })} />)).not.toThrow();
+
+      expect(screen.getByRole('button', { name: 'Unaccepted (0)' })).toBeInTheDocument();
+    });
+
+    function renderControlledSelection(initial: RsvpSelection) {
+      const props = baseProps();
+      const onRsvpStatusesChange = vi.fn();
+      let changeFromHost!: (next: RsvpSelection) => void;
+
+      function ControlledHost() {
+        const [selection, setSelection] = useState(initial);
+        changeFromHost = setSelection;
+        return <CalendarPane
+          {...props}
+          selectedRsvpStatuses={selection}
+          onRsvpStatusesChange={(next) => {
+            onRsvpStatusesChange(next);
+            setSelection(next);
+          }}
+        />;
+      }
+
+      render(<ControlledHost />);
+      return {
+        onRsvpStatusesChange,
+        changeFromHost: (next: RsvpSelection) => act(() => changeFromHost(next)),
+      };
+    }
+
+    function expectPressedSelection(selection: RsvpSelection) {
+      for (const [status, name] of [
+        ['accepted', /^Accepted$/],
+        ['tentative', /^Maybe$/],
+        ['declined', /^Declined$/],
+      ] as const) {
+        expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', String(selection.has(status)));
+      }
+      expect(screen.getByRole('button', { name: /^Unaccepted/ })).toHaveAttribute(
+        'aria-pressed', String(selection.size === 1 && selection.has('needsAction')),
+      );
+    }
+
+    it('selects only needsAction when Unaccepted is clicked in a controlled host', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted', 'tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectPressedSelection(new Set(['needsAction']));
+    });
+
+    it('restores the previous selection on a second Unaccepted click', () => {
+      const original: RsvpSelection = new Set(['accepted', 'tentative']);
+      const { onRsvpStatusesChange } = renderControlledSelection(original);
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(2, original);
+      expectPressedSelection(original);
+    });
+
+    it('toggles Accepted against the saved selection and saves a fresh selection on reentry', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted', 'tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Accepted' }));
+
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
+      expectPressedSelection(new Set(['tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectPressedSelection(new Set(['needsAction']));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
+      expectPressedSelection(new Set(['tentative']));
+    });
+
+    it('uses defaults when toggling Accepted empties the saved selection', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Accepted' }));
+
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(DEFAULT_RSVP_STATUSES));
+      expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
+    });
+
+    it('exits exclusive mode after an external host change and restores the fresh host selection', () => {
+      const { onRsvpStatusesChange, changeFromHost } = renderControlledSelection(new Set(['accepted', 'tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      changeFromHost(new Set(['accepted']));
+      expectPressedSelection(new Set(['accepted']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectPressedSelection(new Set(['needsAction']));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['accepted']));
+      expectPressedSelection(new Set(['accepted']));
+    });
+
+    it('restores defaults when the host initially loads only needsAction without a saved selection', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['needsAction']));
+      expectPressedSelection(new Set(['needsAction']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(DEFAULT_RSVP_STATUSES));
+      expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
+    });
+
+    it('treats a mixed needsAction selection as nonexclusive and restores it after two clicks', () => {
+      const original: RsvpSelection = new Set(['needsAction', 'accepted']);
+      const { onRsvpStatusesChange } = renderControlledSelection(original);
+      expectPressedSelection(original);
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectPressedSelection(new Set(['needsAction']));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(original);
+      expectPressedSelection(original);
+    });
+
+    it('keeps the ordinary Accepted toggle and later restores that resulting selection', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted', 'tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accepted' }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
+      expectPressedSelection(new Set(['tentative']));
+
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
+      expectPressedSelection(new Set(['tentative']));
+    });
+
+    it('restores the original observable selection after a quick double click', async () => {
+      vi.useRealTimers();
+      const original: RsvpSelection = new Set(['accepted', 'tentative']);
+      const { onRsvpStatusesChange } = renderControlledSelection(original);
+      const user = userEvent.setup();
+
+      await user.dblClick(screen.getByRole('button', { name: /^Unaccepted/ }));
+
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(2, original);
+      expectPressedSelection(original);
+    });
   });
 
   it('shows connect prompt when not connected, and calls onConnect', () => {
