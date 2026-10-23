@@ -175,7 +175,10 @@ export function CalendarPane(props: CalendarPaneProps) {
   const events = useMemo(() => controller.getEvents(), [controller, version]);
   const statuses = controller.getSourceStatus();
   const connected = props.connected ?? sources.length > 0;
-  const ctrlState = controller.getState();
+  const ctrlState =
+    typeof controller.getState === 'function'
+      ? controller.getState()
+      : { loading: false, error: false, deferred: false, lastSyncAt: null };
   const multi = sources.length >= 2;
   const needsScopeSources = sources.filter((s) => statuses[s.id] === 'needs-scope');
   const needsReauth = connected && (props.needsReauth ?? (sources.length > 0 && needsScopeSources.length === sources.length));
