@@ -8,14 +8,15 @@ interface CalendarSelectorProps {
   onChange: (selectedIds: string[]) => void;
   /** Optional account heading (used when several sources are shown). */
   heading?: string;
+  theme?: 'system' | 'light' | 'dark';
 }
 
-export function CalendarSelector({ calendars, selectedIds, onChange, heading }: CalendarSelectorProps) {
-  return <GroupedCalendarSelector groups={[{ id: '', calendars, selectedIds, onChange, heading }]} />;
+export function CalendarSelector({ calendars, selectedIds, onChange, heading, theme = 'system' }: CalendarSelectorProps) {
+  return <GroupedCalendarSelector theme={theme} groups={[{ id: '', calendars, selectedIds, onChange, heading }]} />;
 }
 
 /** Internal pane renderer; intentionally not re-exported from the package barrel. */
-export function GroupedCalendarSelector({ groups }: { groups: (CalendarSelectorProps & { id: string })[] }) {
+export function GroupedCalendarSelector({ groups, theme = 'system' }: { groups: (CalendarSelectorProps & { id: string })[]; theme?: CalendarSelectorProps['theme'] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -103,7 +104,7 @@ export function GroupedCalendarSelector({ groups }: { groups: (CalendarSelectorP
   const activeCalendar = visibleCalendars[activeIndex];
 
   return (
-    <div className="calendar-selector" ref={rootRef}>
+    <div className="calendar-selector" data-calendar-theme={theme} ref={rootRef}>
       <button
         ref={buttonRef}
         type="button"

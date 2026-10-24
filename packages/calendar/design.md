@@ -3,7 +3,7 @@
 ## Layers
 
 - `core/`: framework-free. `types`, `events` (pure helpers/parsing), `fetch` (Google REST, `CalendarFetchError`, `RefreshDeferredError`), `sync` (per-calendar full/incremental), `reconcile` (selection, change application), `storage` (adapter types), `controller`.
-- `react/`: `CalendarPane`, `CalendarSelector`, `styles.css`. Consumes the controller via `subscribe`/`getEvents`/`getState`.
+- `react/`: `CalendarPane`, `CalendarSelector`, `styles.css`. Consumes the controller via `subscribe`/`getEvents`/`getState`. Optional `theme?: 'system' | 'light' | 'dark'` is presentation-only, defaulting to system; the pane forwards it to every internal selector.
 - `testing/`: shared fixtures and the storage contract, published as `./testing`.
 
 ## Decisions
@@ -23,3 +23,7 @@
 - Event identity is multi-source (`sourceId:calendarId:eventId`); the one intentional divergence from notesdiary's `calendarId:eventId`.
 - `vitest` is an optional peer so non-test consumers install nothing extra.
 - CSS shipped as a copied file (`tsc && cp`), with no host variables required.
+- CSS-native OS tracking: each pane/selector root carries `data-calendar-theme`; light defaults, explicit-dark overrides and system-only `prefers-color-scheme` media rules update mounted system instances live without a JavaScript media listener. Explicit modes ignore OS changes.
+- Full semantic palette resets and scoped native-control `color-scheme` at each root isolate nested and adjacent instances. A standalone system selector follows the OS even under an opposite-theme pane. Existing palette literals, geometry and functional contracts are preserved.
+- Prop transitions, including back to system/undefined, preserve mounted interaction state (open dropdown, query, focus, active option, selection and saved RSVP state); they do not cause controller refreshes or selection callbacks. No global classes, document/body mutations, shared theme context or controller/storage fields are needed.
+- Host owns theme-picker UI, preference persistence and explicit styling for custom slots (`emptyState`, `sourceNotice`, `renderEventAction`); built-in palette rules do not broadly restyle slot descendants.

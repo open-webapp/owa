@@ -38,6 +38,7 @@ function useWindowWidth(): number {
 const SOURCE_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#a142f4', '#00acc1', '#ff7043', '#8d6e63'];
 
 export interface CalendarPaneProps {
+  theme?: 'system' | 'light' | 'dark';
   sources: Source[];
   controller: CalendarController;
   selectedRsvpStatuses: RsvpSelection;
@@ -170,7 +171,7 @@ function usableUrl(url: string | null | undefined): string | null {
 
 export function CalendarPane(props: CalendarPaneProps) {
   const isDesktop = useWindowWidth() >= 960;
-  const { sources, controller, selectedRsvpStatuses } = props;
+  const { sources, controller, selectedRsvpStatuses, theme = 'system' } = props;
   const popupName = props.popupName ?? DEFAULT_POPUP_NAME;
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -377,7 +378,7 @@ export function CalendarPane(props: CalendarPaneProps) {
 
   if (!connected) {
     return (
-      <div className="calendar-pane">
+      <div className="calendar-pane" data-calendar-theme={theme}>
         <div className="calendar-pane-prompt">
           {props.emptyState ?? (
             <>
@@ -394,7 +395,7 @@ export function CalendarPane(props: CalendarPaneProps) {
 
   if (needsReauth) {
     return (
-      <div className="calendar-pane">
+      <div className="calendar-pane" data-calendar-theme={theme}>
         <div className="calendar-pane-prompt">
           {props.sourceNotice && needsScopeSources.length > 0 ? (
             needsScopeSources.map((s) => <div key={s.id}>{props.sourceNotice?.(s)}</div>)
@@ -422,7 +423,7 @@ export function CalendarPane(props: CalendarPaneProps) {
   const showCalendarSelector = calendarSources.length > 0;
 
   return (
-    <div className="calendar-pane" ref={paneRef}>
+    <div className="calendar-pane" data-calendar-theme={theme} ref={paneRef}>
       <div className="calendar-pane-scroll">
       <div className="calendar-rsvp-chips" ref={chipsRef}>
         <button
@@ -616,7 +617,7 @@ export function CalendarPane(props: CalendarPaneProps) {
       </div>
       {showCalendarSelector && (
         <footer className="calendar-pane-footer">
-          <GroupedCalendarSelector groups={calendarSources.map((s) => ({
+          <GroupedCalendarSelector theme={theme} groups={calendarSources.map((s) => ({
               id: s.id,
               calendars: controller.getCalendars(s.id),
               selectedIds: controller.getSelectedIds(s.id),
