@@ -2,7 +2,10 @@
   "name": "owa",
   "private": true,
   "workspaces": [
-    "packages/*",
+    "packages/drive-sync",
+    "packages/drive-connect",
+    "packages/project-sync",
+    "packages/calendar",
     "apps/*"
   ],
   "scripts": {
