@@ -76,7 +76,8 @@ Initial: `ok` for every source.
 - `CalendarPane` gains `connected?` (default `sources.length > 0`), `needsReauth?` (default: all sources `needs-scope`), `onConnect?`, `onReconnect?`.
 - `emptyState` replaces the built-in not-connected block; `sourceNotice` renders per `needs-scope` source.
 - Multi-source (2+ sources): events colored per source, email shown.
-- Selector keeps at least one calendar selected; "Clear" resets to primary.
+- CalendarPane has one footer combobox opening a shared searchable dropdown, grouped under account headings for multiple sources. Clear resets only its account to primary (else first); filtered Select all adds only that account's matches, retaining existing selections. Each account keeps its last selected calendar, including a non-primary selection. Calendar IDs shared across accounts remain independent.
+- Exported standalone CalendarSelector retains its single-list props and behavior, including filtered Select all, Clear and last-selection protection.
 - Event popup opens via `window.open(url, popupName)` falling back to `_blank`.
 - Built-in copy is fixed: see README "Built-in copy".
 
@@ -87,3 +88,5 @@ Initial: `ok` for every source.
 ## Versioning
 
 Independent semver; tag `calendar-v<version>` publishes. Breaking changes to exports, row shapes, selection semantics or status semantics require a major (0.x: minor) bump. 0.2.0 is a BREAKING minor (selection semantics, cache/storage row fields, pane behavior); 0.1.0 rows still read.
+
+0.4.0 is a BREAKING pre-1.0 minor for the requested observable pane UI change from per-account footer triggers to one grouped selector; standalone selector compatibility is preserved.

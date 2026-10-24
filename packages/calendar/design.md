@@ -13,6 +13,7 @@
 - Cache-first: `hydrate()` publishes stored events before any network call, so the pane is useful immediately and offline.
 - Incremental sync via syncToken minimizes traffic; a full windowed sync runs when there is no token, no `lastFullSyncAt`, or the last full sync is over 24h old. 410 falls back to a full sync.
 - Selection is not forced to primary. The stored selection is honored when it still exists; otherwise primary (else first). At least one calendar always stays selected.
+- CalendarPane supplies account-local calendars, selections and controller writes to one internal grouped footer selector. Open/search state and keyboard traversal are shared; option identity includes account and calendar IDs. Clear, filtered Select all (retaining existing selections) and last-selected protection stay account-local. Exported CalendarSelector delegates as a single group with compatible props and behavior.
 - Deselecting a calendar retains its cached events and sync tokens; the read-time filter hides them. Re-selecting shows them at once.
 - Windowing happens twice: refresh prunes events that ended before now-30d; reads keep only events overlapping now-30d .. now+30d.
 - Per-calendar isolation: one failing calendar keeps its cache and token without affecting others. The error flag is raised only when every selected calendar errored and nothing is cached.

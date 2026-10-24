@@ -174,9 +174,15 @@ Built-in copy (overridable only through the slots above):
 - Loading: "Loading calendar…".
 - Empty: "No matching events in the next 30 days".
 
+#### Footer calendar selection
+
+One footer combobox opens a shared searchable dropdown, with calendars grouped under account headings in multi-source use. Each account has its own Clear (primary, else first calendar) and filtered Select all, which adds matching calendars while retaining existing selections. Actions affect only their account; its last selected calendar cannot be deselected, including a non-primary selection.
+
 ### CalendarSelector props
 
 `calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
+
+The exported standalone selector keeps its single-list props and behavior; Select all adds only search matches while retaining existing selections.
 
 ### Host CSS
 
@@ -187,6 +193,10 @@ Built-in copy (overridable only through the slots above):
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
+
+## 0.4.0 (BREAKING pre-1.0 minor)
+
+- CalendarPane replaces per-account footer triggers with one shared dropdown grouped by account. Hosts relying on multiple footer triggers must adapt. Account-local selection rules and the exported standalone CalendarSelector remain compatible.
 
 ## 0.3.0 (minor, additive)
 

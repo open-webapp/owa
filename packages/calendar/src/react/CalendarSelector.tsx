@@ -11,6 +11,11 @@ interface CalendarSelectorProps {
 }
 
 export function CalendarSelector({ calendars, selectedIds, onChange, heading }: CalendarSelectorProps) {
+  return <GroupedCalendarSelector groups={[{ id: '', calendars, selectedIds, onChange, heading }]} />;
+}
+
+/** Internal pane renderer; intentionally not re-exported from the package barrel. */
+export function GroupedCalendarSelector({ groups }: { groups: (CalendarSelectorProps & { id: string })[] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -18,8 +23,9 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
   const searchRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
-  const visibleCalendars = filterCalendarsByName(calendars, query);
-  const primaryId = calendars.find((calendar) => calendar.primary)?.id ?? calendars[0]?.id;
+  const visibleGroups = groups.map((group) => ({ ...group, visible: filterCalendarsByName(group.calendars, query) }));
+  const visibleCalendars = visibleGroups.flatMap((group) => group.visible.map((calendar) => ({ calendar, group })));
+  const optionId = (sourceId: string, calendarId: string) => `${listboxId}-${encodeURIComponent(JSON.stringify([sourceId, calendarId]))}`;
 
   useEffect(() => {
     if (open) searchRef.current?.focus();
@@ -46,7 +52,8 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
     buttonRef.current?.focus();
   }
 
-  function toggle(id: string) {
+  function toggle(group: CalendarSelectorProps, id: string) {
+    const { selectedIds, onChange } = group;
     if (selectedIds.includes(id)) {
       if (selectedIds.length === 1) return;
       onChange(selectedIds.filter((selectedId) => selectedId !== id));
@@ -55,12 +62,14 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
     onChange([...selectedIds, id]);
   }
 
-  function selectAll() {
-    const visibleIds = visibleCalendars.map((calendar) => calendar.id);
+  function selectAll(group: typeof visibleGroups[number]) {
+    const { selectedIds, onChange } = group;
+    const visibleIds = group.visible.map((calendar) => calendar.id);
     onChange([...selectedIds, ...visibleIds.filter((id) => !selectedIds.includes(id))]);
   }
 
-  function clear() {
+  function clear({ calendars, onChange }: CalendarSelectorProps) {
+    const primaryId = calendars.find((calendar) => calendar.primary)?.id ?? calendars[0]?.id;
     onChange(primaryId ? [primaryId] : []);
   }
 
@@ -84,11 +93,14 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
       const activeCalendar = visibleCalendars[activeIndex];
-      if (activeCalendar) toggle(activeCalendar.id);
+      if (activeCalendar) toggle(activeCalendar.group, activeCalendar.calendar.id);
     }
   }
 
-  const label = summarizeCalendarSelection(selectedIds, calendars);
+  const label = groups.length === 1
+    ? summarizeCalendarSelection(groups[0].selectedIds, groups[0].calendars)
+    : `${groups.reduce((count, group) => count + group.selectedIds.length, 0)} calendars selected`;
+  const activeCalendar = visibleCalendars[activeIndex];
 
   return (
     <div className="calendar-selector" ref={rootRef}>
@@ -110,9 +122,9 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
       </button>
       {open && (
         <div className="calendar-selector-dropdown calendar-selector-dropdown--upward" onKeyDown={handleListboxKeyDown}>
-          {heading && (
+          {groups.length === 1 && groups[0].heading && (
             <div role="heading" aria-level={3} className="calendar-selector-heading">
-              {heading}
+              {groups[0].heading}
             </div>
           )}
           <input
@@ -127,37 +139,48 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
             }}
           />
           <div className="calendar-selector-actions">
-            <button type="button" onClick={selectAll}>Select all</button>
-            <button type="button" onClick={clear}>Clear</button>
+            {groups.length === 1 && <>
+              <button type="button" onClick={() => selectAll(visibleGroups[0])}>Select all</button>
+              <button type="button" onClick={() => clear(groups[0])}>Clear</button>
+            </>}
             <button type="button" onClick={close}>Done</button>
           </div>
           <div
             id={listboxId}
             role="listbox"
             aria-multiselectable="true"
-            aria-activedescendant={visibleCalendars[activeIndex] ? `${listboxId}-${visibleCalendars[activeIndex].id}` : undefined}
+            aria-activedescendant={activeCalendar ? optionId(activeCalendar.group.id, activeCalendar.calendar.id) : undefined}
             tabIndex={-1}
           >
-            {calendars.length === 0 ? (
+            {visibleGroups.map((group) => (
+              <div key={group.id} role={groups.length > 1 ? 'group' : undefined} aria-label={group.heading}>
+                {groups.length > 1 && <>
+                  <div role="heading" aria-level={3} className="calendar-selector-heading">{group.heading}</div>
+                  <div className="calendar-selector-actions">
+                    <button type="button" onClick={() => selectAll(group)}>Select all</button>
+                    <button type="button" onClick={() => clear(group)}>Clear</button>
+                  </div>
+                </>}
+            {group.calendars.length === 0 ? (
               <p>No calendars available</p>
-            ) : visibleCalendars.length === 0 ? (
+            ) : group.visible.length === 0 ? (
               <p>No calendars found</p>
             ) : (
-              visibleCalendars.map((calendar, index) => (
+              group.visible.map((calendar) => (
                 <button
-                  key={calendar.id}
+                  key={optionId(group.id, calendar.id)}
                   type="button"
-                  id={`${listboxId}-${calendar.id}`}
+                  id={optionId(group.id, calendar.id)}
                   role="option"
                   title={calendar.summary}
-                  aria-selected={selectedIds.includes(calendar.id)}
-                  data-active={index === activeIndex || undefined}
-                  onClick={() => toggle(calendar.id)}
+                  aria-selected={group.selectedIds.includes(calendar.id)}
+                  data-active={(activeCalendar?.group.id === group.id && activeCalendar.calendar.id === calendar.id) || undefined}
+                  onClick={() => toggle(group, calendar.id)}
                 >
                   <input
                     type="checkbox"
                     className="calendar-selector-checkbox"
-                    checked={selectedIds.includes(calendar.id)}
+                    checked={group.selectedIds.includes(calendar.id)}
                     readOnly
                     tabIndex={-1}
                     aria-hidden="true"
@@ -172,6 +195,8 @@ export function CalendarSelector({ calendars, selectedIds, onChange, heading }: 
                 </button>
               ))
             )}
+              </div>
+            ))}
           </div>
         </div>
       )}
