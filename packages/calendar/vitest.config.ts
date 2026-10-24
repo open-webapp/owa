@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // React de-duplication for the test runner (same rationale as
 // packages/drive-connect/vitest.config.ts). This package targets React 19 and
@@ -16,6 +16,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    exclude: [...configDefaults.exclude, '**/*.browser.test.tsx'],
     setupFiles: ['./src/__tests__/setup.ts'],
   },
   resolve: {

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { CalendarPane } from '../CalendarPane.js';
 import { makeEvent, baseProps } from './helpers.js';
+import { paletteContractCss } from './cssPaletteContract.js';
 
 // Extracts the CSS rule body for a given selector, e.g. ".calendar-day-header { ... }".
 function extractRuleBody(css: string, selector: string): string {
@@ -17,7 +18,7 @@ function extractRuleBody(css: string, selector: string): string {
 
 describe('CalendarPane sticky headers CSS contract', () => {
   const cssPath = path.resolve(__dirname, '../styles.css');
-  const css = fs.readFileSync(cssPath, 'utf-8');
+  const css = paletteContractCss(fs.readFileSync(cssPath, 'utf-8'));
 
   it('.calendar-rsvp-chips is sticky, pinned to the top of the scroll container', () => {
     const body = extractRuleBody(css, '.calendar-rsvp-chips');

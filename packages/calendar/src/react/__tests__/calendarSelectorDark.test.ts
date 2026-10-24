@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { paletteContractCss } from './cssPaletteContract.js';
 
-const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf8');
+const css = paletteContractCss(readFileSync(resolve(__dirname, '../styles.css'), 'utf8'));
 
 describe('CalendarSelector dark mode CSS', () => {
-  const start = css.indexOf('@media (prefers-color-scheme: dark)');
+  const start = css.lastIndexOf('@media (prefers-color-scheme: dark)');
   const dark = start >= 0 ? css.slice(start) : '';
 
   it('has a dark block styling the dropdown background and color', () => {

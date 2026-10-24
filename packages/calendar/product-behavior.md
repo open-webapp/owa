@@ -4,6 +4,9 @@ Source of truth: `notesdiary/product-behavior.md`, "Google Calendar" section. Th
 
 ## Package
 
+- Both `CalendarPane` and standalone `CalendarSelector` accept optional `theme?: 'system' | 'light' | 'dark'`. Omitted/undefined defaults to system and follows OS/browser color-scheme changes live; explicit light/dark ignore the OS.
+- Theme changes on mounted components preserve dropdown open/search/focus/keyboard-active state, selected calendars and the pane's saved RSVP selection, without selection callbacks or controller refreshes. Every pane state and internal selector uses the pane's mode; standalone selectors choose independently. Adjacent/nested opposite-theme instances stay isolated, including system selectors under explicit-theme ancestors.
+- Shipped CSS themes all built-in states and native controls with the existing palettes and layout, without a document/body theme switch or persisted theme state.
 - Window: rolling 30 days back to 30 days ahead; empty state "No matching events in the next 30 days". Events are shown when they overlap the window (end after now-30d, start before now+30d).
 - RSVP chips appear in order Accepted, Maybe, Declined, Unaccepted. Accepted, Maybe, and Declined toggle individual statuses; zero-selected snaps back to the default (accepted, tentative, needsAction).
 - Unaccepted is an exclusive shortcut, pressed only for exactly `needsAction` (not a mixed selection containing it). Entering exclusive mode saves the previous selection locally in the pane; clicking again restores it, or the defaults if unavailable. Another chip toggles against the saved selection or defaults. An external nonexclusive selection clears the saved selection.
@@ -26,4 +29,5 @@ Source of truth: `notesdiary/product-behavior.md`, "Google Calendar" section. Th
 
 ## Host
 
+- Theme-picker UI, preference persistence and passing the saved choice through the `theme` prop. Styling custom `emptyState`, `sourceNotice` and `renderEventAction` slot content remains host-owned, including explicit colors where needed.
 - 📅 toggle, desktop auto-open, mobile overlay and close button, connect/reconnect prompts (`connected`, `needsReauth`, `onConnect`, `onReconnect`, or the `emptyState`/`sourceNotice` slots), insert-link action (`renderEventAction`), 10-minute refresh cadence and focus catch-up, per-project storage and migration, disconnect cache clearing, token acquisition.

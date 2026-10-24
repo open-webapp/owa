@@ -73,6 +73,11 @@ Initial: `ok` for every source.
 
 `CalendarPane` and `CalendarSelector` props as in README.
 
+- Both accept `theme?: 'system' | 'light' | 'dark'`; omitted/`undefined` means `'system'`. System follows OS/browser color-scheme changes live; explicit modes ignore OS changes.
+- A mounted prop change applies without remounting or resetting dropdown open/query/focus/keyboard-active state, calendar selection or saved RSVP selection, and without theme-induced callbacks or controller refreshes.
+- Every pane return state uses the requested mode, forwarded to every internal selector. Standalone selectors resolve their own mode, including system inside an opposite-theme ancestor. Adjacent/nested roots remain independent.
+- Theme-picker UI, preference persistence and custom slot styling belong to the host; theme is not controller/storage state.
+
 - `CalendarPane` gains `connected?` (default `sources.length > 0`), `needsReauth?` (default: all sources `needs-scope`), `onConnect?`, `onReconnect?`.
 - `emptyState` replaces the built-in not-connected block; `sourceNotice` renders per `needs-scope` source.
 - Multi-source (2+ sources): events colored per source, email shown.
@@ -83,10 +88,12 @@ Initial: `ok` for every source.
 
 ## Styling
 
-`./styles.css` standalone, `prefers-color-scheme` dark variants. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--rsvp-bar` (internal). No required host variables.
+`./styles.css` is standalone. Each `.calendar-pane` and `.calendar-selector` root has `data-calendar-theme` and resets the full semantic palette, including scoped native-control `color-scheme`. Light defaults, explicit-dark overrides and system-only dark media rules preserve the existing palette while preventing opposite-theme ancestor leakage. No document/body attributes or global theme state are changed. Built-in prompts, errors, loading/empty states, events, RSVP chips/badge, footer and selector controls are covered; hosts style their own `emptyState`, `sourceNotice` and `renderEventAction` content. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--rsvp-bar` (internal). No required host variables.
 
 ## Versioning
 
 Independent semver; tag `calendar-v<version>` publishes. Breaking changes to exports, row shapes, selection semantics or status semantics require a major (0.x: minor) bump. 0.2.0 is a BREAKING minor (selection semantics, cache/storage row fields, pane behavior); 0.1.0 rows still read.
 
 0.4.0 is a BREAKING pre-1.0 minor for the requested observable pane UI change from per-account footer triggers to one grouped selector; standalone selector compatibility is preserved.
+
+0.5.0 is an additive minor for optional component themes, with no migration or breaking behavior change. The default remains OS-selected styling.

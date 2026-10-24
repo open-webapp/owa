@@ -38,6 +38,7 @@ void controller.refresh();   // then syncs from Google
 <CalendarPane
   sources={sources}
   controller={controller}
+  theme="system"                           // optional: 'system' | 'light' | 'dark'
   selectedRsvpStatuses={statuses}          // Set<RsvpStatus>
   onRsvpStatusesChange={setStatuses}
   connected={connected}                    // optional, see CalendarPane props
@@ -146,6 +147,7 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | --- | --- | --- |
 | `sources` | `Source[]` | shown accounts; 2+ enables multi-source UI (per-source color and email) |
 | `controller` | `CalendarController` | |
+| `theme?` | `'system' \| 'light' \| 'dark'` | defaults to `'system'`, including when `undefined`; applies to every pane state and all internal selectors |
 | `selectedRsvpStatuses` | `Set<RsvpStatus>` | filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative, needsAction |
 | `onRsvpStatusesChange` | `(next) => void` | |
 | `renderEventAction?` | `(event) => ReactNode` | per-event slot |
@@ -180,19 +182,45 @@ One footer combobox opens a shared searchable dropdown, with calendars grouped u
 
 ### CalendarSelector props
 
-`calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
+`calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use), `theme?: 'system' | 'light' | 'dark'` (defaults to `'system'`, including when `undefined`). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
+
+```tsx
+import { CalendarSelector } from '@open-webapp/calendar';
+import '@open-webapp/calendar/styles.css';
+
+<CalendarSelector
+  calendars={calendars}
+  selectedIds={selectedIds}
+  onChange={setSelectedIds}
+  heading="me@example.com"
+  theme="dark"
+/>;
+```
+
+### Theme behavior
+
+Both components follow the OS/browser `prefers-color-scheme` preference live in `'system'` mode; omitting `theme` preserves this default. Explicit `'light'` and `'dark'` ignore OS changes. Hosts can change the prop on a mounted component (including back to `'system'` or `undefined`) without remounting, closing an open dropdown, losing its search query, focus or keyboard-active option, changing selected calendars, or resetting the pane's saved RSVP selection. Theme changes do not trigger selection callbacks or controller refreshes.
+
+Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The existing single-trigger layout and cross-account keyboard navigation are preserved. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
+
+The host owns theme-picker UI and preference persistence (for example, saving a choice and passing it back as `theme`). The package neither stores the choice nor adds it to the controller. Hosts also own styling of `emptyState`, `sourceNotice` and `renderEventAction` slot content; give custom content explicit styles where needed rather than relying on the built-in palette.
 
 The exported standalone selector keeps its single-list props and behavior; Select all adds only search matches while retaining existing selections.
 
 ### Host CSS
 
-`styles.css` is self-contained (plain colors, dark mode via `prefers-color-scheme`). It requires no host CSS variables. Variables it reads, all with defaults:
+`styles.css` is self-contained, using component-scoped semantic palette tokens and native-control `color-scheme`. Each pane/selector root resets the full palette; explicit dark overrides and system-only `prefers-color-scheme` rules keep instances isolated. It requires no host CSS variables. Layout/status variables:
 
 - `--calendar-footer-height` (default `64px`, set on `.calendar-pane`; override to match host footer)
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
+
+## 0.5.0 (minor, additive)
+
+- Adds optional `theme?: 'system' | 'light' | 'dark'` to both React components, with live OS tracking by default and live per-instance overrides.
+- Themes all built-in pane states and internal/standalone selectors while preserving existing palettes, layout, copy and interaction contracts. Existing callers need no migration.
 
 ## 0.4.0 (BREAKING pre-1.0 minor)
 
