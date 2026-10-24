@@ -81,7 +81,7 @@ describe('CalendarPane with sources', () => {
     expect(screen.getByText('Beta Event')).toBeInTheDocument();
   });
 
-  it('selector groups calendars under a heading per account', () => {
+  it('one footer combobox opens all calendars grouped by account with one click', () => {
     const controller = createFakeController({
       sources: [A, B],
       calendars: { a: calsA, b: calsB },
@@ -89,7 +89,10 @@ describe('CalendarPane with sources', () => {
     });
     render(<CalendarPane {...paneProps({ sources: [A, B], controller })} />);
 
-    for (const combo of screen.getAllByRole('combobox')) fireEvent.click(combo);
+    const footer = screen.getByRole('contentinfo');
+    const combos = within(footer).getAllByRole('combobox');
+    expect(combos).toHaveLength(1);
+    fireEvent.click(combos[0]);
 
     const headingA = screen.getByRole('heading', { name: 'a@example.com' });
     const headingB = screen.getByRole('heading', { name: 'b@example.com' });
@@ -115,6 +118,93 @@ describe('CalendarPane with sources', () => {
 
     expect(controller.getSelectedIds('a')).toEqual(['a-primary']);
     expect(controller.getSelectedIds('b')).toEqual(['b-primary', 'b-misc']);
+  });
+
+  it('routes shared calendar IDs to only the account whose option was toggled', () => {
+    const controller = createFakeController({
+      sources: [A, B],
+      calendars: {
+        a: [calsA[0], { ...calsA[1], id: 'shared' }],
+        b: [calsB[0], { ...calsB[1], id: 'shared' }],
+      },
+      selected: { a: ['a-primary'], b: ['b-primary', 'shared'] },
+    });
+    render(<CalendarPane {...paneProps({ sources: [A, B], controller })} />);
+    for (const combo of screen.getAllByRole('combobox')) fireEvent.click(combo);
+
+    expect(screen.getByRole('option', { name: 'A Team' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('option', { name: 'B Misc' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('option', { name: 'A Team' }));
+    expect(controller.setSelectedIds).toHaveBeenLastCalledWith('a', ['a-primary', 'shared']);
+    expect(controller.getSelectedIds('b')).toEqual(['b-primary', 'shared']);
+
+    fireEvent.click(screen.getByRole('option', { name: 'B Misc' }));
+    expect(controller.setSelectedIds).toHaveBeenLastCalledWith('b', ['b-primary']);
+    expect(controller.getSelectedIds('a')).toEqual(['a-primary', 'shared']);
+    expect(screen.getByRole('option', { name: 'A Team' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: 'B Misc' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('protects the last selected calendar in each account even when another account has selections', () => {
+    const controller = createFakeController({
+      sources: [A, B],
+      calendars: { a: calsA, b: calsB },
+      selected: { a: ['a-team'], b: ['b-primary'] },
+    });
+    render(<CalendarPane {...paneProps({ sources: [A, B], controller })} />);
+    for (const combo of screen.getAllByRole('combobox')) fireEvent.click(combo);
+
+    fireEvent.click(screen.getByRole('option', { name: 'A Team' }));
+    fireEvent.click(screen.getByRole('option', { name: 'B Home' }));
+    // Check the boundary too: the fake controller itself rejects empty selections.
+    expect(controller.setSelectedIds).not.toHaveBeenCalled();
+    expect(controller.getSelectedIds('a')).toEqual(['a-team']);
+    expect(controller.getSelectedIds('b')).toEqual(['b-primary']);
+    expect(screen.getByRole('option', { name: 'A Team' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: 'B Home' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('filtered Select all adds only its account matches and preserves hidden selections', () => {
+    const controller = createFakeController({
+      sources: [A, B],
+      calendars: { a: calsA, b: calsB },
+      selected: { a: ['a-primary'], b: ['b-primary'] },
+    });
+    render(<CalendarPane {...paneProps({ sources: [A, B], controller })} />);
+    fireEvent.click(screen.getByRole('combobox'));
+    const search = screen.getByRole('searchbox');
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: 'Team' } });
+    fireEvent.click(within(screen.getByRole('group', { name: A.email })).getByRole('button', { name: 'Select all' }));
+    expect(controller.setSelectedIds).toHaveBeenCalledTimes(1);
+    expect(controller.setSelectedIds).toHaveBeenCalledWith('a', ['a-primary', 'a-team']);
+    expect(controller.getSelectedIds('b')).toEqual(['b-primary']);
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getByRole('option', { name: 'A Work' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: 'A Team' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: 'B Misc' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('keyboard navigation crosses accounts with shared IDs and returns focus on dismissal', () => {
+    const controller = createFakeController({
+      sources: [A, B],
+      calendars: { a: [calsA[0], { ...calsA[1], id: 'shared' }], b: [calsB[0], { ...calsB[1], id: 'shared' }] },
+      selected: { a: ['a-primary'], b: ['b-primary'] },
+    });
+    render(<CalendarPane {...paneProps({ sources: [A, B], controller })} />);
+    const trigger = screen.getByRole('combobox');
+    fireEvent.click(trigger);
+    const search = screen.getByRole('searchbox');
+    fireEvent.keyDown(search, { key: 'ArrowUp' });
+    const option = screen.getByRole('option', { name: 'B Misc' });
+    expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', option.id);
+    expect(option.id).not.toBe(screen.getByRole('option', { name: 'A Team' }).id);
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(controller.setSelectedIds).toHaveBeenCalledTimes(1);
+    expect(controller.setSelectedIds).toHaveBeenCalledWith('b', ['b-primary', 'shared']);
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it('renders the renderEventAction slot once per event (timed and all-day)', () => {

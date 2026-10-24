@@ -11,7 +11,7 @@ import {
   getCalendarEventKey,
   DEFAULT_RSVP_STATUSES,
 } from '../core/events.js';
-import { CalendarSelector } from './CalendarSelector.js';
+import { GroupedCalendarSelector } from './CalendarSelector.js';
 
 export type RsvpSelection = Set<RsvpStatus>;
 
@@ -616,17 +616,15 @@ export function CalendarPane(props: CalendarPaneProps) {
       </div>
       {showCalendarSelector && (
         <footer className="calendar-pane-footer">
-          {calendarSources.map((s) => (
-            <CalendarSelector
-              key={s.id}
-              calendars={controller.getCalendars(s.id)}
-              selectedIds={controller.getSelectedIds(s.id)}
-              onChange={(ids) => {
+          <GroupedCalendarSelector groups={calendarSources.map((s) => ({
+              id: s.id,
+              calendars: controller.getCalendars(s.id),
+              selectedIds: controller.getSelectedIds(s.id),
+              onChange: (ids) => {
                 void controller.setSelectedIds(s.id, ids);
-              }}
-              heading={multi ? s.email : undefined}
-            />
-          ))}
+              },
+              heading: multi ? s.email : undefined,
+          }))} />
         </footer>
       )}
     </div>
