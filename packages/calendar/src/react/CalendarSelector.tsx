@@ -106,6 +106,7 @@ export function GroupedCalendarSelector({ groups, theme = 'system' }: { groups: 
   return (
     <div className="calendar-selector" data-calendar-theme={theme} ref={rootRef}>
       <button
+        className="calendar-selector-trigger"
         ref={buttonRef}
         type="button"
         role="combobox"
@@ -119,7 +120,10 @@ export function GroupedCalendarSelector({ groups, theme = 'system' }: { groups: 
           setActiveIndex(0);
         }}
       >
-        {label}
+        <span className="calendar-selector-trigger-label">{label}</span>
+        <svg className="calendar-selector-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+          <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       {open && (
         <div className="calendar-selector-dropdown calendar-selector-dropdown--upward" onKeyDown={handleListboxKeyDown}>

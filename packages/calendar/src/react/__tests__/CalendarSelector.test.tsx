@@ -15,6 +15,27 @@ function renderSelector(selectedIds = ['primary'], onChange = vi.fn(), items = c
 }
 
 describe('CalendarSelector', () => {
+  it('keeps the full combobox name and relationships with a decorative chevron', () => {
+    const name = 'A very long calendar name that must remain available to assistive technology';
+    const onChange = vi.fn();
+    renderSelector(['primary'], onChange, [{ ...calendars[0], summary: name }]);
+    const trigger = screen.getByRole('combobox', { name });
+    expect(trigger).toHaveAttribute('type', 'button');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    const indicator = trigger.querySelector('svg');
+    expect(indicator, 'decorative chevron').not.toBeNull();
+    expect(indicator).toHaveAttribute('aria-hidden', 'true');
+    expect(indicator).toHaveAttribute('focusable', 'false');
+    expect(indicator).not.toHaveAttribute('tabindex');
+    expect(within(trigger).queryByRole('img')).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-controls', screen.getByRole('listbox').id);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('searchbox', { name: 'Search calendars' })).toHaveFocus();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('uses the selected calendar name or selected count for its button label', () => {
     const { rerender } = render(<CalendarSelector calendars={calendars} selectedIds={['primary']} onChange={vi.fn()} />);
     expect(screen.getByRole('combobox', { name: 'Work' })).toBeInTheDocument();
