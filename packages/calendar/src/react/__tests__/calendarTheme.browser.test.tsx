@@ -48,6 +48,135 @@ async function click(selector: string) { await act(() => userEvent.click(el(sele
 async function key(value: string) { await act(() => userEvent.keyboard(value)); }
 async function fill(value: string) { await act(() => userEvent.fill(el('[role=searchbox]'), value)); }
 
+function triggerGeometry(scope: string, name: string) {
+  const trigger = el(`${scope} [role=combobox]`);
+  expect(trigger.getAttribute('aria-label')).toBe(name);
+  const computed = getComputedStyle(trigger);
+  for (const [property, value] of Object.entries({
+    display: 'inline-flex', 'box-sizing': 'border-box', 'align-items': 'center',
+    'justify-content': 'center', gap: '8px', 'min-height': '36px',
+    padding: '8px 12px', 'border-radius': '6px', cursor: 'pointer',
+    'border-width': '1px', 'border-style': 'solid',
+  })) expect.soft(computed.getPropertyValue(property), `${scope} trigger ${property}`).toBe(value);
+  expect.soft(computed.font, `${scope} inherited font`).toBe(getComputedStyle(trigger.parentElement!).font);
+  const bounds = trigger.getBoundingClientRect();
+  expect.soft(bounds.height, `${scope} rendered trigger height`).toBeGreaterThanOrEqual(36);
+  const indicator = trigger.querySelector('svg');
+  expect.soft(indicator, `${scope} rendered decorative chevron`).not.toBeNull();
+  if (indicator) {
+    expect(indicator.getAttribute('aria-hidden')).toBe('true');
+    expect(indicator.getAttribute('focusable')).toBe('false');
+    const icon = indicator.getBoundingClientRect();
+    expect(icon.width).toBe(12);
+    expect(icon.height).toBe(12);
+    expect(getComputedStyle(indicator).flexShrink).toBe('0');
+    expect(getComputedStyle(indicator).visibility).toBe('visible');
+    expect(getComputedStyle(indicator).display).not.toBe('none');
+    expect(getComputedStyle(indicator).opacity).toBe('1');
+    expect(indicator.getBBox().width).toBeGreaterThan(0);
+    expect(indicator.getBBox().height).toBeGreaterThan(0);
+    expect(icon.left).toBeGreaterThanOrEqual(bounds.left);
+    expect(icon.right).toBeLessThanOrEqual(bounds.right);
+    expect(getComputedStyle(indicator).color).toBe(computed.color);
+    expect(indicator.querySelector('[stroke="currentColor"], [fill="currentColor"]') ??
+      (indicator.getAttribute('stroke') === 'currentColor' || indicator.getAttribute('fill') === 'currentColor' ? indicator : null)).not.toBeNull();
+  }
+}
+
+for (const width of [360, 1000]) for (const single of [true, false]) {
+  it(`affordance geometry and containment: ${single ? 'long name' : 'multi-account count'} at ${width}px`, async () => {
+    await page.viewport(width, 900);
+    const name = 'Long calendar name '.repeat(16).trim();
+    const items = [{ ...calendars[0], summary: name }];
+    const props = single ? baseProps({ calendars: items, selectedCalendarIds: ['a'] }) : richProps();
+    const onChange = vi.fn();
+    const render = (theme: Theme) => <>
+      <section id="affordance-pane"><CalendarPane {...props} theme={theme} /></section>
+      <section id="affordance-standalone"><CalendarSelector calendars={items} selectedIds={['a']} onChange={onChange} theme={theme} /></section>
+    </>;
+    mount(render('system'));
+    host.style.width = width === 360 ? '328px' : '720px';
+    for (const os of ['light', 'dark'] as const) for (const theme of ['light', 'dark', 'system'] as const) {
+      await commands.scheme(os);
+      act(() => root.render(render(theme)));
+      const dark = theme === 'dark' || (theme === 'system' && os === 'dark');
+      for (const scope of ['#affordance-pane', '#affordance-standalone']) {
+        triggerGeometry(scope, scope === '#affordance-pane' && !single ? '3 calendars selected' : name);
+        const trigger = el(`${scope} [role=combobox]`);
+        const palette = getComputedStyle(trigger);
+        expect.soft(palette.color, `${scope} themed text`).toBe(reference[dark ? 'dark' : 'light'].title);
+        expect.soft(palette.backgroundColor, `${scope} themed surface`).toBe(reference[dark ? 'dark' : 'light'].surface);
+        expect.soft(palette.borderTopColor, `${scope} control border`).toBe(dark ? 'rgb(68, 68, 68)' : 'rgb(118, 118, 118)');
+        expect.soft(trigger.getBoundingClientRect().right, `${scope} trigger contained`).toBeLessThanOrEqual(host.getBoundingClientRect().right);
+      }
+      const footer = el('.calendar-pane-footer');
+      expect.soft(footer.scrollWidth, 'no horizontal footer overflow').toBeLessThanOrEqual(footer.clientWidth);
+      expect(footer.getBoundingClientRect().height).toBe(64);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(props.controller.setSelectedIds).not.toHaveBeenCalled();
+    }
+    await page.viewport(1000, 900);
+  });
+}
+
+for (const theme of ['light', 'dark'] as const) for (const location of ['footer', 'standalone']) {
+  it(`affordance real hover and keyboard-only focus: ${location} ${theme}`, async () => {
+    await commands.scheme(theme === 'light' ? 'dark' : 'light');
+    const props = richProps();
+    const onChange = vi.fn();
+    mount(<><button id="before">Before</button>{location === 'footer'
+      ? <CalendarPane {...props} theme={theme} />
+      : <CalendarSelector calendars={calendars} selectedIds={['a']} onChange={onChange} theme={theme} />}</>);
+    const trigger = el('[role=combobox]');
+    await userEvent.hover(el('#before'));
+    const resting = getComputedStyle(trigger).backgroundColor;
+    await userEvent.hover(trigger);
+    expect.soft(getComputedStyle(trigger).backgroundColor, 'visible trigger hover change').not.toBe(resting);
+    expect.soft(getComputedStyle(trigger).backgroundColor, 'theme hover token').toBe(theme === 'dark' ? 'rgb(42, 42, 42)' : 'rgb(240, 248, 251)');
+    let pointerFocus: { visible: boolean; outline: string } | undefined;
+    trigger.addEventListener('focus', () => {
+      pointerFocus = { visible: trigger.matches(':focus-visible'), outline: getComputedStyle(trigger).outlineStyle };
+    }, { once: true });
+    await click('[role=combobox]');
+    expect(pointerFocus?.visible).toBe(false);
+    expect.soft(pointerFocus?.outline, 'pointer focus has no outline').toBe('none');
+    expect(document.activeElement).toBe(el('[role=searchbox]'));
+    await click('.calendar-selector-actions button:last-child');
+    expect(document.activeElement).toBe(trigger);
+    // Real pointer focus on an ordinary button must not acquire the keyboard outline.
+    await click('#before');
+    await click('[role=combobox]');
+    await key('{Escape}');
+    expect(document.activeElement).toBe(trigger);
+    await click('#before');
+    // RSVP controls and event links precede the footer. Bound native traversal by
+    // the rendered tabbable count rather than an arbitrary number of Tab presses.
+    const tabbableCount = Array.from(host.querySelectorAll<HTMLElement>(
+      'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]',
+    )).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') &&
+      element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden').length;
+    for (let i = 0; i < tabbableCount && document.activeElement !== trigger; i++) await act(() => userEvent.tab());
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.matches(':focus-visible')).toBe(true);
+    const focus = getComputedStyle(trigger);
+    expect.soft(focus.outlineStyle, 'keyboard focus outline style').toBe('solid');
+    expect.soft(focus.outlineWidth, 'keyboard focus outline width').toBe('2px');
+    expect.soft(focus.outlineOffset, 'keyboard focus outline offset').toBe('2px');
+    expect.soft(focus.outlineColor, 'keyboard focus token').toBe(theme === 'dark' ? 'rgb(34, 208, 239)' : 'rgb(26, 115, 232)');
+    for (const activation of ['{Enter}', ' ']) {
+      await key(activation);
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(document.activeElement).toBe(el('[role=searchbox]'));
+      expect(trigger.getAttribute('aria-controls')).toBe(el('[role=listbox]').id);
+      await key('{Escape}');
+      expect(document.activeElement).toBe(trigger);
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    }
+    expect(onChange).not.toHaveBeenCalled();
+    expect(props.controller.setSelectedIds).not.toHaveBeenCalled();
+  });
+}
+
 // The remaining literal reference roles from the original two CSS media blocks:
 // light/dark prompt #555/#ccc, accent #00a9ce/#22d0ef, hover #f0f8fb/#2a2a2a,
 // unpressed chip #333/#eee + #ccc/#444; selected text #fff/#081a59;
@@ -82,11 +211,13 @@ function panePalette(dark: boolean, prefix = '') {
     ['declined', 'rgb(220, 38, 38)', 'rgb(248, 113, 113)'],
   ]) s(`.calendar-event-row--rsvp-${status}`, { 'border-left-color': dark ? night : light });
 }
-function selectorPalette(dark: boolean, prefix = '') {
+async function selectorPalette(dark: boolean, prefix = '') {
+  // Click leaves the real pointer over the trigger; measure its resting palette.
+  await userEvent.hover(el(prefix + '[role=searchbox]'));
   const r = reference[dark ? 'dark' : 'light'];
   const s = (selector: string, values: Record<string, string>) => style(prefix + selector, values);
   s('.calendar-selector', { 'color-scheme': dark ? 'dark' : 'light' });
-  s('[role=combobox]', { color: rgb(dark, 'rgb(0, 0, 0)', 'rgb(238, 238, 238)'), 'background-color': rgb(dark, 'rgb(239, 239, 239)', 'rgb(42, 42, 42)'), 'border-top-color': rgb(dark, 'rgb(118, 118, 118)', 'rgb(68, 68, 68)'), 'border-top-width': '2px', 'color-scheme': dark ? 'dark' : 'light' });
+   s('[role=combobox]', { color: r.title, 'background-color': r.surface, 'border-top-color': rgb(dark, 'rgb(118, 118, 118)', 'rgb(68, 68, 68)'), 'border-top-width': '1px', 'border-top-style': 'solid', 'color-scheme': dark ? 'dark' : 'light' });
   s('.calendar-selector-dropdown', { color: r.text, 'background-color': r.dropdown, 'box-shadow': r.shadow, 'border-color': rgb(dark, 'rgb(204, 204, 204)', 'rgb(51, 51, 51)') });
   s('.calendar-selector-heading', { color: r.text, opacity: '0.7' });
   s('[role=searchbox]', { color: rgb(dark, 'rgb(0, 0, 0)', 'rgb(238, 238, 238)'), 'background-color': rgb(dark, 'rgb(255, 255, 255)', 'rgb(42, 42, 42)'), 'border-top-color': rgb(dark, 'rgb(118, 118, 118)', 'rgb(68, 68, 68)'), 'border-top-width': dark ? '1px' : '2px', 'color-scheme': dark ? 'dark' : 'light' });
@@ -118,7 +249,7 @@ for (const os of ['light', 'dark'] as const) for (const theme of modes) {
     const dark = (theme === 'system' || theme === undefined) ? os === 'dark' : theme === 'dark';
     panePalette(dark, '#pane ');
     await click('#pane [role=combobox]');
-    selectorPalette(dark, '#pane ');
+    await selectorPalette(dark, '#pane ');
     expect(el('#pane [role=heading]').textContent).toBe('me@example.com');
     expect(host.querySelectorAll('#pane [role=combobox]')).toHaveLength(1);
     expect(host.querySelectorAll('#pane [role=searchbox]')).toHaveLength(1);
@@ -131,7 +262,7 @@ for (const os of ['light', 'dark'] as const) for (const theme of modes) {
     style('#pane .calendar-selector', { 'color-scheme': dark ? 'dark' : 'light' });
     style('.calendar-event-source-dot', { 'background-color': 'rgb(66, 133, 244)', width: '8px', height: '8px' });
     await click('#standalone [role=combobox]');
-    selectorPalette(dark, '#standalone ');
+    await selectorPalette(dark, '#standalone ');
     expect(el('#standalone [role=heading]').textContent).toBe('Standalone account');
     expect(el('#standalone [role=searchbox]')).toBe(document.activeElement);
     expect(el('#standalone [role=searchbox]').matches(':focus-visible')).toBe(true);
@@ -150,7 +281,8 @@ for (const os of ['light', 'dark'] as const) {
     style('.calendar-rsvp-chip.selected', { 'background-color': r.chip, height: '32px' });
     style('.calendar-event-row', { padding: '10px 16px', 'border-left-width': '3px' });
     await act(() => userEvent.click(el('[role=combobox]')));
-    style('.calendar-selector-dropdown', { 'background-color': r.dropdown, color: r.text, 'box-shadow': r.shadow, 'min-width': '220px', padding: '8px', 'border-radius': '6px', bottom: '27px' });
+    style('.calendar-selector-dropdown', { 'background-color': r.dropdown, color: r.text, 'box-shadow': r.shadow, 'min-width': '220px', padding: '8px', 'border-radius': '6px' });
+    expect(el('[role=combobox]').getBoundingClientRect().top - el('.calendar-selector-dropdown').getBoundingClientRect().bottom).toBeCloseTo(6);
     style('[data-active=true]', { 'background-color': r.active, padding: '6px' });
   });
 }
@@ -287,7 +419,8 @@ for (const width of [360, 1000]) {
       expect(host.querySelectorAll('[role=group]')).toHaveLength(2);
       expect(host.querySelectorAll('[role=option]')).toHaveLength(4);
       expect(el('.calendar-selector-dropdown').getBoundingClientRect().width).toBe(220);
-      style('.calendar-selector-dropdown', { 'border-radius': '6px', padding: '8px', bottom: '27px', right: '0px' });
+      style('.calendar-selector-dropdown', { 'border-radius': '6px', padding: '8px', right: '0px' });
+      expect(el('[role=combobox]').getBoundingClientRect().top - el('.calendar-selector-dropdown').getBoundingClientRect().bottom).toBeCloseTo(6);
       style('[role=listbox]', { 'max-height': '240px', gap: '2px' });
       style('[role=option]', { padding: '6px', gap: '8px' });
       style('.calendar-selector-name', { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' });
@@ -327,7 +460,7 @@ it('live light → dark → light OS changes only system/omitted/undefined insta
         const section = el(`#live-${i}`);
         const trigger = section.querySelector<HTMLElement>(`${suffix} [role=combobox]`)!;
         await act(() => userEvent.click(trigger));
-        selectorPalette(dark, `#live-${i} `);
+        await selectorPalette(dark, `#live-${i} `);
         style(`#live-${i} .calendar-selector-dropdown`, { 'color-scheme': dark ? 'dark' : 'light' });
         await key('{Escape}');
       }
@@ -359,7 +492,7 @@ for (const os of ['light', 'dark'] as const) {
       style(`#${outer}-child-pane .calendar-pane-prompt p`, { color: innerDark ? 'rgb(204, 204, 204)' : 'rgb(85, 85, 85)' });
       for (const [kind, dark] of [['explicit', innerDark], ['system', os === 'dark']] as const) {
         await click(`#${outer}-${kind} [role=combobox]`);
-        selectorPalette(dark, `#${outer}-${kind} `);
+        await selectorPalette(dark, `#${outer}-${kind} `);
         await key('{Escape}');
       }
     }

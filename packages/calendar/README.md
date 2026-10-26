@@ -180,6 +180,8 @@ Built-in copy (overridable only through the slots above):
 
 One footer combobox opens a shared searchable dropdown, with calendars grouped under account headings in multi-source use. Each account has its own Clear (primary, else first calendar) and filtered Select all, which adds matching calendars while retaining existing selections. Actions affect only their account; its last selected calendar cannot be deselected, including a non-primary selection.
 
+The footer and standalone `CalendarSelector` share a padded, rounded trigger with a visible decorative chevron, themed hover surface and keyboard-only focus outline. Long labels ellipsize visually while retaining the full accessible name. This is a visual-only correction to the former native trigger geometry: click, native Enter/Space activation, search, keyboard navigation, Escape/Done focus return, combobox relationships and selection callbacks/rules are unchanged. The default footer remains 64px high, with the upward dropdown 6px above the trigger.
+
 ### CalendarSelector props
 
 `calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use), `theme?: 'system' | 'light' | 'dark'` (defaults to `'system'`, including when `undefined`). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
@@ -201,7 +203,7 @@ import '@open-webapp/calendar/styles.css';
 
 Both components follow the OS/browser `prefers-color-scheme` preference live in `'system'` mode; omitting `theme` preserves this default. Explicit `'light'` and `'dark'` ignore OS changes. Hosts can change the prop on a mounted component (including back to `'system'` or `undefined`) without remounting, closing an open dropdown, losing its search query, focus or keyboard-active option, changing selected calendars, or resetting the pane's saved RSVP selection. Theme changes do not trigger selection callbacks or controller refreshes.
 
-Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The existing single-trigger layout and cross-account keyboard navigation are preserved. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
+Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The single-trigger structure and cross-account keyboard navigation are preserved; the approved trigger geometry exception is described above. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
 
 The host owns theme-picker UI and preference persistence (for example, saving a choice and passing it back as `theme`). The package neither stores the choice nor adds it to the controller. Hosts also own styling of `emptyState`, `sourceNotice` and `renderEventAction` slot content; give custom content explicit styles where needed rather than relying on the built-in palette.
 
@@ -216,6 +218,13 @@ The exported standalone selector keeps its single-list props and behavior; Selec
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
+
+The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
+
+## 0.5.1 (patch)
+
+- Corrects footer and standalone selector affordance with a padded, rounded 36px-minimum trigger, decorative chevron, themed hover and keyboard-focus treatment, and long-label containment.
+- Approved visual-only exception to native trigger geometry/surface treatment; the default 64px footer and 6px dropdown clearance are preserved. Public props, copy, accessible names/relationships, interactions, selection semantics, controller and storage/schema contracts are unchanged. No migration is required.
 
 ## 0.5.0 (minor, additive)
 

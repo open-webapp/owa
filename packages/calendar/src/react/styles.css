@@ -424,10 +424,48 @@
   position: relative;
 }
 
-.calendar-selector > [role='combobox'] {
-  color: var(--calendar-control-text);
-  background: var(--calendar-control-background);
-  border-color: var(--calendar-control-border);
+.calendar-selector-trigger {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  vertical-align: top;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--calendar-control-border);
+  border-radius: 6px;
+  background: var(--calendar-surface);
+  color: var(--calendar-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-selector-trigger:hover {
+  background: var(--calendar-hover);
+}
+
+.calendar-selector-trigger:focus {
+  outline: none;
+}
+
+.calendar-selector-trigger:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 2px;
+}
+
+.calendar-selector-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-selector-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
 }
 
 .calendar-selector-dropdown {
