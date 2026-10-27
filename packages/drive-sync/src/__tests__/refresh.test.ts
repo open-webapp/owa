@@ -157,9 +157,10 @@ describe('activate() only warms tracked stale projects in a visible, focused tab
 
     try {
       fakeDocument.dispatchEvent(new Event('visibilitychange'))
-      await flush()
-
-      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      // IndexedDB reads can span more than two timer turns under suite load.
+      await vi.waitFor(() => {
+        expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      })
     } finally {
       dispose()
     }
@@ -193,9 +194,9 @@ describe('activate() only warms tracked stale projects in a visible, focused tab
       gisFake.queueResponse({ access_token: 'refreshed-token', expires_in: 3600, scope: SCOPES.join(' ') })
       fakeDocument.hasFocus = () => true
       fakeWindow.dispatchEvent(new Event('focus'))
-      await flush()
-
-      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      await vi.waitFor(() => {
+        expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      })
     } finally {
       dispose()
     }
@@ -222,9 +223,9 @@ describe('activate() only warms tracked stale projects in a visible, focused tab
 
     try {
       fakeWindow.dispatchEvent(new Event('focus'))
-      await flush()
-
-      expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      await vi.waitFor(() => {
+        expect(gisFake.calls).toEqual([expect.objectContaining({ prompt: 'none' })])
+      })
       expect(gisFake.calls).not.toContainEqual(expect.objectContaining({ prompt: 'consent' }))
     } finally {
       dispose()
