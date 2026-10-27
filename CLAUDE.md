@@ -60,3 +60,7 @@ Never change the observable behavior of a published package's public API (return
 Specifically, `drive-connect`'s `ensureFresh()` MUST fall through to the interactive `connect()` flow when the token is missing/unusable; it must NEVER throw `NeedsReauthError` instead. This is locked by tests 3, 5 and 5b in `packages/drive-connect/src/__tests__/auth.test.ts`. If a test encodes a contract, never edit the test to match changed code; ask the user first.
 
 Contract tests are enforced in CI by `scripts/check-contracts.sh` (`.github/workflows/ci.yml`). Run it before committing any change under `packages/drive-connect`.
+
+## Calendar dates use local browser time
+
+In `packages/calendar`, any "today" or date key derived from a `Date` must use the browser's local time (`getFullYear` / `getMonth` / `getDate`). Never use `toISOString().slice(0, 10)` (UTC) for this. Pure UTC arithmetic on date strings (e.g. `addDaysToIso`) may use UTC.

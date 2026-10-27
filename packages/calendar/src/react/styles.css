@@ -11,7 +11,8 @@
   --calendar-chip-text: #333;
   --calendar-chip-border: #ccc;
   --calendar-chip-selected: #081a59;
-  --calendar-today-accent: #081a59;
+  --calendar-day-ribbon-a: #e4e8ef;
+  --calendar-day-ribbon-b: #c8d6f0;
   --calendar-chip-selected-text: #ffffff;
   --calendar-badge: #e8eefb;
   --calendar-badge-text: #081a59;
@@ -217,9 +218,12 @@
   align-items: flex-start;
 }
 
-.calendar-day-ribbon[data-today='true'] {
-  background: var(--calendar-today-accent);
-  color: var(--calendar-chip-selected-text);
+.calendar-day-ribbon[data-parity='even'] {
+  background: var(--calendar-day-ribbon-a);
+}
+
+.calendar-day-ribbon[data-parity='odd'] {
+  background: var(--calendar-day-ribbon-b);
 }
 
 .calendar-day-ribbon-window {
@@ -395,7 +399,8 @@
   --calendar-chip-text: #eee;
   --calendar-chip-border: #444;
   --calendar-chip-selected: #22d0ef;
-  --calendar-today-accent: #22d0ef;
+  --calendar-day-ribbon-a: #2b3342;
+  --calendar-day-ribbon-b: #1c3a5e;
   --calendar-chip-selected-text: #081a59;
   --calendar-badge: #081a59;
   --calendar-badge-text: #e8eefb;
@@ -437,7 +442,8 @@
     --calendar-chip-text: #eee;
     --calendar-chip-border: #444;
     --calendar-chip-selected: #22d0ef;
-  --calendar-today-accent: #22d0ef;
+    --calendar-day-ribbon-a: #2b3342;
+    --calendar-day-ribbon-b: #1c3a5e;
     --calendar-chip-selected-text: #081a59;
     --calendar-badge: #081a59;
     --calendar-badge-text: #e8eefb;
