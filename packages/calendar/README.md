@@ -211,7 +211,7 @@ The exported standalone selector keeps its single-list props and behavior; Selec
 
 ### Host CSS
 
-Day ribbon styling: override `--calendar-today-accent` to recolour today's ribbon; `--calendar-day-header-height` tunes the sticky label offset.
+Day ribbon styling: each day's ribbon alternates between two tones by day parity (`data-parity="even|odd"`), set with `--calendar-day-ribbon-a` and `--calendar-day-ribbon-b`. Parity is stable across scroll, filtering and month boundaries, and the ribbon does not mark today. `--calendar-day-header-height` tunes the sticky label offset.
 
 `styles.css` is self-contained, using component-scoped semantic palette tokens and native-control `color-scheme`. Each pane/selector root resets the full palette; explicit dark overrides and system-only `prefers-color-scheme` rules keep instances isolated. It requires no host CSS variables. Layout/status variables:
 
@@ -223,9 +223,15 @@ The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark
 
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
 
+## 0.7.0 (minor, breaking-visual)
+
+- Day ribbons alternate between two tones by day parity (`data-parity="even|odd"`, days since 1970 of the date key mod 2) instead of highlighting today. Parity is stable across scroll, filter and month boundaries.
+- "Today" is now the browser's local date (previously UTC, which could be off by a day for users away from UTC). Sticky day header text ("Today · Oct 26") is unchanged.
+- Migration: `--calendar-today-accent` was removed in 0.7.0; use `--calendar-day-ribbon-a` / `--calendar-day-ribbon-b`. The ribbon no longer marks today (`data-today` is now `data-parity`).
+
 ## 0.6.0 (minor, additive-visual)
 
-- Each day has a thin vertical ribbon left of its events with a rotated `Mmm D` label; today's ribbon uses the new `--calendar-today-accent` token (defaults to the selected-chip colour in light and dark). The sticky day header is unchanged.
+- Each day has a thin vertical ribbon left of its events with a rotated `Mmm D` label; ribbons alternate tones by day parity (see 0.7.0). The sticky day header is unchanged.
 - The RSVP status bar moved from the left edge to the right edge of event rows.
 - New helper `formatRibbonLabel`.
 

@@ -147,7 +147,13 @@ function openEventPopup(url: string, popupRef: { current: Window | null }, popup
 }
 
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function dayParity(dateKey: string): 'even' | 'odd' {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d) / 86400000) % 2 === 0 ? 'even' : 'odd';
 }
 
 function formatTimeOfDay(dateTime: string): string {
@@ -498,7 +504,7 @@ export function CalendarPane(props: CalendarPaneProps) {
               <div
                 className="calendar-day-ribbon"
                 aria-hidden="true"
-                data-today={group.dateKey === todayIso ? 'true' : undefined}
+                data-parity={dayParity(group.dateKey)}
               >
                 <div className="calendar-day-ribbon-window">
                   <span className="calendar-day-ribbon-label">{formatRibbonLabel(group.dateKey)}</span>

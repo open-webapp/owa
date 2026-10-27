@@ -51,10 +51,6 @@ export function getRollingWindow(now: Date): { start: string; end: string } {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 /**
  * Returns events whose `selfResponseStatus` is a member of `selected` —
  * declined is a normal, independently-selectable status now, not hard-excluded.
@@ -194,7 +190,8 @@ function addDaysToIso(dateKey: string, days: number): string {
   const { year, month, day } = parseIsoDateParts(dateKey);
   const d = new Date(Date.UTC(year, month - 1, day));
   d.setUTCDate(d.getUTCDate() + days);
-  return toIsoDate(d);
+  // d is built from pure UTC parts (not "now"), so the UTC date is the right one.
+  return d.toISOString().slice(0, 10);
 }
 
 /**

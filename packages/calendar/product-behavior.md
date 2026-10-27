@@ -13,6 +13,7 @@ Source of truth: `notesdiary/product-behavior.md`, "Google Calendar" section. Th
 - Unaccepted always shows a count badge, including zero, counting `needsAction` events from the controller's selected-calendar ±30-day snapshot before RSVP filtering. Visible counts cap at `99+`; the chip's `aria-label` and `title` expose the full count. Badge CSS class: `.calendar-rsvp-chip-badge`.
 - Scroll-to-today button; initial recenter on current -> next upcoming -> today; current-event highlight; idle autoscroll.
 - Sticky RSVP row with day headers pinned beneath it (offset via `--chip-row-height`).
+- "Today" is the browser's local date. Day ribbons alternate two tones by day parity and do not mark today.
 - Day headers: "Today · {Month Day}", "Tomorrow · {Month Day}", else "{Month Day}" (year when different); today always rendered.
 - All-day events are banner rows; timed events show time range, optional "Join" link, title link to `htmlLink`, organizer label. Title opens a reused popup (`popupName`) on desktop (>=960px), new tab on mobile or with modifier/middle click; blocked popup falls back to a new tab.
 - RSVP bar: 3px left bar (accepted green, tentative amber, declined rose, needsAction gray), light and dark.
