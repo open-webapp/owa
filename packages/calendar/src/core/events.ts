@@ -185,6 +185,11 @@ function formatMonthDay(dateKey: string, includeYear: boolean): string {
   return includeYear ? `${base}, ${year}` : base;
 }
 
+/** Short "Mmm D" label for the day ribbon: no year, no Today/Tomorrow. */
+export function formatRibbonLabel(dateKey: string): string {
+  return formatMonthDay(dateKey, false);
+}
+
 function addDaysToIso(dateKey: string, days: number): string {
   const { year, month, day } = parseIsoDateParts(dateKey);
   const d = new Date(Date.UTC(year, month - 1, day));

@@ -211,6 +211,8 @@ The exported standalone selector keeps its single-list props and behavior; Selec
 
 ### Host CSS
 
+Day ribbon styling: override `--calendar-today-accent` to recolour today's ribbon; `--calendar-day-header-height` tunes the sticky label offset.
+
 `styles.css` is self-contained, using component-scoped semantic palette tokens and native-control `color-scheme`. Each pane/selector root resets the full palette; explicit dark overrides and system-only `prefers-color-scheme` rules keep instances isolated. It requires no host CSS variables. Layout/status variables:
 
 - `--calendar-footer-height` (default `64px`, set on `.calendar-pane`; override to match host footer)
@@ -220,6 +222,12 @@ The exported standalone selector keeps its single-list props and behavior; Selec
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
+
+## 0.6.0 (minor, additive-visual)
+
+- Each day has a thin vertical ribbon left of its events with a rotated `Mmm D` label; today's ribbon uses the new `--calendar-today-accent` token (defaults to the selected-chip colour in light and dark). The sticky day header is unchanged.
+- The RSVP status bar moved from the left edge to the right edge of event rows.
+- New helper `formatRibbonLabel`.
 
 ## 0.5.1 (patch)
 

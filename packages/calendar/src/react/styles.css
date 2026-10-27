@@ -11,6 +11,7 @@
   --calendar-chip-text: #333;
   --calendar-chip-border: #ccc;
   --calendar-chip-selected: #081a59;
+  --calendar-today-accent: #081a59;
   --calendar-chip-selected-text: #ffffff;
   --calendar-badge: #e8eefb;
   --calendar-badge-text: #081a59;
@@ -193,12 +194,49 @@
   z-index: 1;
 }
 
+.calendar-day-body {
+  display: flex;
+}
+
+.calendar-day-events {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-day-ribbon {
+  flex: 0 0 16px;
+  width: 16px;
+  min-height: 48px;
+  background: var(--calendar-header);
+  color: var(--calendar-chip-text);
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.calendar-day-ribbon[data-today='true'] {
+  background: var(--calendar-today-accent);
+  color: var(--calendar-chip-selected-text);
+}
+
+.calendar-day-ribbon-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  position: sticky;
+  top: calc(var(--chip-row-height, 44px) + var(--calendar-day-header-height, 33px));
+  white-space: nowrap;
+  padding: 6px 0;
+}
+
 .calendar-event-allday {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-left: 3px solid var(--rsvp-bar, transparent);
+  border-right: 3px solid var(--rsvp-bar, transparent);
   border-bottom: 1px solid var(--calendar-border);
 }
 
@@ -207,7 +245,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 16px;
-  border-left: 3px solid var(--rsvp-bar, transparent);
+  border-right: 3px solid var(--rsvp-bar, transparent);
   border-bottom: 1px solid var(--calendar-border);
 }
 
@@ -350,6 +388,7 @@
   --calendar-chip-text: #eee;
   --calendar-chip-border: #444;
   --calendar-chip-selected: #22d0ef;
+  --calendar-today-accent: #22d0ef;
   --calendar-chip-selected-text: #081a59;
   --calendar-badge: #081a59;
   --calendar-badge-text: #e8eefb;
@@ -391,6 +430,7 @@
     --calendar-chip-text: #eee;
     --calendar-chip-border: #444;
     --calendar-chip-selected: #22d0ef;
+  --calendar-today-accent: #22d0ef;
     --calendar-chip-selected-text: #081a59;
     --calendar-badge: #081a59;
     --calendar-badge-text: #e8eefb;
