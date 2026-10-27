@@ -343,10 +343,10 @@
   background: var(--calendar-card-background);
 }
 
+.calendar-event-join,
 .calendar-event-rsvp {
   display: inline-flex;
   flex: none;
-  margin-left: auto;
   padding: 4px;
   border: 1px solid var(--status-border);
   border-radius: 4px;
@@ -354,24 +354,32 @@
   color: var(--status-text);
 }
 
+.calendar-event-rsvp {
+  margin-left: auto;
+}
+
+.calendar-event-row--rsvp-accepted,
 .calendar-event-rsvp--accepted {
   --status-text: var(--calendar-status-accepted-text);
   --status-background: var(--calendar-status-accepted-background);
   --status-border: var(--calendar-status-accepted-border);
 }
 
+.calendar-event-row--rsvp-tentative,
 .calendar-event-rsvp--tentative {
   --status-text: var(--calendar-status-tentative-text);
   --status-background: var(--calendar-status-tentative-background);
   --status-border: var(--calendar-status-tentative-border);
 }
 
+.calendar-event-row--rsvp-needsAction,
 .calendar-event-rsvp--needsAction {
   --status-text: var(--calendar-status-needsAction-text);
   --status-background: var(--calendar-status-needsAction-background);
   --status-border: var(--calendar-status-needsAction-border);
 }
 
+.calendar-event-row--rsvp-declined,
 .calendar-event-rsvp--declined {
   --status-text: var(--calendar-status-declined-text);
   --status-background: var(--calendar-status-declined-background);
@@ -380,9 +388,18 @@
 
 .calendar-event-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.calendar-event-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .calendar-event-title-link {
@@ -468,16 +485,20 @@
 .calendar-event-join {
   font-size: 12px;
   font-weight: 500;
-  color: var(--calendar-accent);
+  line-height: 14px;
   cursor: pointer;
   text-decoration: none;
   padding: 4px 8px;
-  border: 1px solid var(--calendar-accent);
-  border-radius: 4px;
+  white-space: nowrap;
 }
 
 .calendar-event-join:hover {
-  background: var(--calendar-hover);
+  text-decoration: underline;
+}
+
+.calendar-event-join:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 2px;
 }
 
 .calendar-event-row--current,

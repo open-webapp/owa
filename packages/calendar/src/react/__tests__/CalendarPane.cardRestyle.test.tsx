@@ -125,8 +125,14 @@ describe('CalendarPane RSVP bar card restyle', () => {
         expect(icon).toHaveClass('calendar-event-rsvp', `calendar-event-rsvp--${status}`);
         const header = card.querySelector('.calendar-event-header');
         expect(header).toBe(card.firstElementChild);
-        expect(icon.parentElement).toBe(header);
-        expect(header?.lastElementChild).toBe(icon);
+        const actions = isAllDay ? header : header?.querySelector('.calendar-event-actions');
+        expect(icon.parentElement).toBe(actions);
+        expect(actions?.lastElementChild).toBe(icon);
+        if (!isAllDay) {
+          expect(header?.lastElementChild).toBe(actions);
+          expect(actions?.previousElementSibling).toHaveClass('calendar-event-time');
+          expect(actions?.querySelector('a')).toBeNull();
+        }
         expect(icon.querySelector('svg')).toHaveAttribute('width', '14');
         expect(icon.querySelector('svg')).toHaveAttribute('height', '14');
         expect(icon.querySelector('path')).toHaveAttribute('stroke-width', '2.4');
@@ -179,7 +185,9 @@ describe('CalendarPane RSVP bar card restyle', () => {
         expect(join).toHaveAttribute('href', joinUrl);
         expect(join).toHaveAttribute('target', '_blank');
         expect(join).toHaveAttribute('rel', 'noopener noreferrer');
-        expect(join.previousElementSibling).toHaveClass('calendar-event-time');
+        expect(join.parentElement).toHaveClass('calendar-event-actions');
+        expect(join.parentElement?.previousElementSibling).toHaveClass('calendar-event-time');
+        expect(join.parentElement?.firstElementChild).toBe(join);
         expect(join.nextElementSibling).toBe(within(card).getByRole('img'));
         expect(join.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         bubbled.mockClear();

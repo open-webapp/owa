@@ -568,18 +568,20 @@ export function CalendarPane(props: CalendarPaneProps) {
                   >
                     <div className="calendar-event-header">
                       <span className="calendar-event-time">{formatTimeRange(event)}</span>
-                      {event.joinUrl && (
-                        <a
-                          className="calendar-event-join"
-                          href={event.joinUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Join
-                        </a>
-                      )}
-                      <RsvpStatusIcon status={event.selfResponseStatus} />
+                      <div className="calendar-event-actions">
+                        {event.joinUrl && (
+                          <a
+                            className="calendar-event-join"
+                            href={event.joinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Join
+                          </a>
+                        )}
+                        <RsvpStatusIcon status={event.selfResponseStatus} />
+                      </div>
                     </div>
                     <div className="calendar-event-title-wrap">
                       {hasLink ? (
