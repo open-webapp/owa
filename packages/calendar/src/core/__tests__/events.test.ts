@@ -5,6 +5,7 @@ import {
   isAllDay,
   getRollingWindow,
   filterByRsvp,
+  DEFAULT_RSVP_STATUSES,
   getOrganizerLabel,
   groupByDay,
   formatDayHeader,
@@ -274,6 +275,28 @@ describe('filterByRsvp', () => {
     makeEvent({ id: 'needsAction-1', selfResponseStatus: 'needsAction' }),
     makeEvent({ id: 'declined-1', selfResponseStatus: 'declined' }),
   ];
+
+  it('defaults include pending alongside accepted and tentative without mutating the selection or events', () => {
+    const selection = new Set(DEFAULT_RSVP_STATUSES);
+    const before = structuredClone(events);
+    expect(filterByRsvp(events, selection).map((event) => event.id)).toEqual([
+      'accepted-1', 'tentative-1', 'needsAction-1',
+    ]);
+    expect(selection).toEqual(new Set(['accepted', 'tentative', 'needsAction']));
+    expect(events).toEqual(before);
+  });
+
+  it.each(['accepted', 'tentative', 'declined'] as const)(
+    'pending membership is independent of %s membership', (status) => {
+      const mixed = new Set([status, 'needsAction']);
+      expect(filterByRsvp(events, mixed).map((event) => event.id)).toEqual(
+        status === 'declined' ? ['needsAction-1', 'declined-1'] : [`${status}-1`, 'needsAction-1'],
+      );
+      expect(filterByRsvp(events, new Set([status])).map((event) => event.id)).toEqual([`${status}-1`]);
+      expect(filterByRsvp(events, new Set(['needsAction'])).map((event) => event.id)).toEqual(['needsAction-1']);
+      expect(mixed).toEqual(new Set([status, 'needsAction']));
+    },
+  );
 
   it('keeps only accepted when selected is {accepted}', () => {
     const result = filterByRsvp(events, new Set(['accepted']));

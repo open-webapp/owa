@@ -73,8 +73,11 @@ Initial: `ok` for every source.
 
 `CalendarPane` and `CalendarSelector` props as in README.
 
+- All four RSVP chips independently toggle current supplied membership. O is pressed iff needsAction is selected, including defaults/mixed sets; unanswered events follow membership within calendar/window filters. Defaults remain accepted/tentative/needsAction. Removing the last status returns defaults (O-only -> O leaves O pressed). Explicit empty host sets remain empty without normalization/callbacks on rerender. No previous RSVP selection is saved/restored. This breaking 0.8.0 contract supersedes the historical 0.3.0 exclusive shortcut.
+- Ribbon labels center in the actual intersection: top = max(ribbon top, viewport top, measured chip bottom, that day's header bottom); bottom = min(ribbon bottom, viewport bottom). Empty intersections have zero height. This covers empty Today before an event day and short ribbons, updating on scroll, resize, rendered-content and mounted theme changes.
+
 - Both accept `theme?: 'system' | 'light' | 'dark'`; omitted/`undefined` means `'system'`. System follows OS/browser color-scheme changes live; explicit modes ignore OS changes.
-- A mounted prop change applies without remounting or resetting dropdown open/query/focus/keyboard-active state, calendar selection or saved RSVP selection, and without theme-induced callbacks or controller refreshes.
+- A mounted prop change applies without remounting or resetting dropdown open/query/focus/keyboard-active state, calendar selection or current RSVP selection, and without theme-induced callbacks or controller refreshes.
 - Every pane return state uses the requested mode, forwarded to every internal selector. Standalone selectors resolve their own mode, including system inside an opposite-theme ancestor. Adjacent/nested roots remain independent.
 - Theme-picker UI, preference persistence and custom slot styling belong to the host; theme is not controller/storage state.
 
@@ -90,7 +93,7 @@ Initial: `ok` for every source.
 
 ## Styling
 
-`./styles.css` is standalone. Each `.calendar-pane` and `.calendar-selector` root has `data-calendar-theme` and resets the full semantic palette, including scoped native-control `color-scheme`. Light defaults, explicit-dark overrides and system-only dark media rules preserve the existing palette while preventing opposite-theme ancestor leakage. No document/body attributes or global theme state are changed. Built-in prompts, errors, loading/empty states, events, RSVP chips/badge, footer and selector controls are covered; hosts style their own `emptyState`, `sourceNotice` and `renderEventAction` content. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--calendar-day-ribbon-a` / `--calendar-day-ribbon-b` (alternating day ribbon colours by parity), `--calendar-day-header-height` (sticky label offset, default 33px), `--rsvp-bar` (internal). No required host variables.
+`./styles.css` is standalone. Each `.calendar-pane` and `.calendar-selector` root has `data-calendar-theme` and resets the full semantic palette, including scoped native-control `color-scheme`. Light defaults, explicit-dark overrides and system-only dark media rules preserve the existing palette while preventing opposite-theme ancestor leakage. No document/body attributes or global theme state are changed. Built-in prompts, errors, loading/empty states, events, RSVP chips/badge, footer and selector controls are covered; hosts style their own `emptyState`, `sourceNotice` and `renderEventAction` content. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--calendar-day-ribbon-a` / `--calendar-day-ribbon-b` (alternating day ribbon colours by parity), `--rsvp-bar` (internal). Ribbon labels use measured bounds instead of the former `--calendar-day-header-height` offset. No required host variables.
 
 ## Versioning
 

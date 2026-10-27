@@ -2,7 +2,7 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
-> **0.2.0 is BREAKING.** See [Breaking changes in 0.2.0](#breaking-changes-in-020).
+> **0.8.0 is BREAKING.** See [0.8.0](#080-breaking-pre-10-minor) for independent Unaccepted toggling.
 
 ## Install
 
@@ -148,7 +148,7 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `sources` | `Source[]` | shown accounts; 2+ enables multi-source UI (per-source color and email) |
 | `controller` | `CalendarController` | |
 | `theme?` | `'system' \| 'light' \| 'dark'` | defaults to `'system'`, including when `undefined`; applies to every pane state and all internal selectors |
-| `selectedRsvpStatuses` | `Set<RsvpStatus>` | filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative, needsAction |
+| `selectedRsvpStatuses` | `Set<RsvpStatus>` | host-controlled filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative, needsAction (O pressed) |
 | `onRsvpStatusesChange` | `(next) => void` | |
 | `renderEventAction?` | `(event) => ReactNode` | per-event slot |
 | `connected?` | `boolean` | defaults to `sources.length > 0` (back-compat). `false` shows the not-connected block |
@@ -162,9 +162,9 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 
 #### RSVP chips
 
-The chips appear in order: Accepted, Maybe, Declined, Unaccepted. Accepted, Maybe, and Declined toggle individual statuses; an empty selection falls back to `DEFAULT_RSVP_STATUSES` (accepted, tentative, needsAction).
+The chips appear in order: Accepted, Maybe, Declined, Unaccepted (O). All four independently toggle current supplied membership. Defaults remain accepted, tentative, needsAction, so O is pressed by default.
 
-Unaccepted is an exclusive shortcut: clicking it selects only `needsAction`, saving the previous selection locally in the pane. Clicking it again restores that selection, or the defaults when no saved selection is available. Toggling another chip while exclusive mode is active applies that toggle to the saved selection (or defaults). An external nonexclusive selection clears the saved selection. Unaccepted is pressed only when the selection is exactly `needsAction`; a mixed selection containing `needsAction` does not press it.
+O is pressed iff `needsAction` belongs to the selection, including mixed sets. Unanswered events follow that membership within existing calendar/window filters. Clicking O preserves other statuses; no previous RSVP selection is saved/restored. Removing the last status returns `DEFAULT_RSVP_STATUSES`: O-only -> O returns defaults with O still pressed. Explicit empty host selections remain empty; host rerenders do not normalize membership or emit callbacks.
 
 The Unaccepted badge is always visible, including at zero. It counts `needsAction` events from the controller's selected-calendar, rolling ±30-day snapshot before RSVP filtering. Visible counts cap at `99+`; the chip's `aria-label` and `title` expose the full count.
 
@@ -201,7 +201,7 @@ import '@open-webapp/calendar/styles.css';
 
 ### Theme behavior
 
-Both components follow the OS/browser `prefers-color-scheme` preference live in `'system'` mode; omitting `theme` preserves this default. Explicit `'light'` and `'dark'` ignore OS changes. Hosts can change the prop on a mounted component (including back to `'system'` or `undefined`) without remounting, closing an open dropdown, losing its search query, focus or keyboard-active option, changing selected calendars, or resetting the pane's saved RSVP selection. Theme changes do not trigger selection callbacks or controller refreshes.
+Both components follow the OS/browser `prefers-color-scheme` preference live in `'system'` mode; omitting `theme` preserves this default. Explicit `'light'` and `'dark'` ignore OS changes. Hosts can change the prop on a mounted component (including back to `'system'` or `undefined`) without remounting, closing an open dropdown, losing its search query, focus or keyboard-active option, changing selected calendars, or resetting the pane's current RSVP selection. Theme changes do not trigger selection callbacks or controller refreshes.
 
 Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The single-trigger structure and cross-account keyboard navigation are preserved; the approved trigger geometry exception is described above. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
 
@@ -211,7 +211,7 @@ The exported standalone selector keeps its single-list props and behavior; Selec
 
 ### Host CSS
 
-Day ribbon styling: each day's ribbon alternates between two tones by day parity (`data-parity="even|odd"`), set with `--calendar-day-ribbon-a` and `--calendar-day-ribbon-b`. Parity is stable across scroll, filtering and month boundaries, and the ribbon does not mark today. `--calendar-day-header-height` tunes the sticky label offset.
+Day ribbon styling: each day's ribbon alternates between two tones by day parity (`data-parity="even|odd"`), set with `--calendar-day-ribbon-a` and `--calendar-day-ribbon-b`. Parity is stable across scroll, filtering and month boundaries, and the ribbon does not mark today. Labels center in the actual ribbon/viewport intersection below the measured chips and that day's header, including empty Today before an event day. Short ribbons center within their bounds. Scroll, resize, rendered-content and mounted theme changes update measurements; `--calendar-day-header-height` no longer positions the label.
 
 `styles.css` is self-contained, using component-scoped semantic palette tokens and native-control `color-scheme`. Each pane/selector root resets the full palette; explicit dark overrides and system-only `prefers-color-scheme` rules keep instances isolated. It requires no host CSS variables. Layout/status variables:
 
@@ -222,6 +222,12 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
+
+## 0.8.0 (BREAKING pre-1.0 minor)
+
+- Unaccepted independently toggles `needsAction`, replacing the exclusive shortcut and local restoration introduced in 0.3.0. Hosts relying on pending-only callbacks or restoration must adapt to callbacks reflecting current membership.
+- Defaults and last-deselection fallback remain accepted/tentative/needsAction; O is pressed for defaults and mixed selections containing needsAction.
+- Ribbon labels center in the measured visible intersection, including empty Today, scrolling, resizing and mounted theme changes.
 
 ## 0.7.0 (minor, breaking-visual)
 
@@ -251,7 +257,7 @@ The shared `.calendar-selector-trigger` uses border-box inline-flex, centered al
 
 ## 0.3.0 (minor, additive)
 
-- Adds the Unaccepted exclusive shortcut after Accepted, Maybe, and Declined, with local selection restoration and default fallback as described above.
+- Added the Unaccepted exclusive shortcut after Accepted, Maybe, and Declined, with local selection restoration and default fallback. This historical behavior is superseded by the independent toggle in 0.8.0.
 - Adds an always-visible Unaccepted count badge, including zero, computed before RSVP filtering from the controller's selected-calendar ±30-day snapshot. Counts above 99 display `99+`, with the full count in the chip's `aria-label` and `title`.
 - Adds the `.calendar-rsvp-chip-badge` host styling hook. Public props and default RSVP statuses remain compatible.
 
