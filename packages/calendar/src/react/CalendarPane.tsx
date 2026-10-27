@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CalendarEvent, RsvpStatus, Source } from '../core/types.js';
 import type { CalendarController } from '../core/controller.js';
 import {
@@ -58,57 +58,45 @@ export interface CalendarPaneProps {
   popupName?: string;
 }
 
-const RSVP_CHIPS: { status: RsvpStatus; label: string; icon: JSX.Element }[] = [
+const RSVP_CHIPS: { status: RsvpStatus; label: string; path: string }[] = [
   {
     status: 'accepted',
     label: 'Accepted',
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <path
-          d="M3 7.7L6 10.7L12 4.3"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    ),
+    path: 'M5 13l4 4L19 7',
   },
   {
     status: 'tentative',
     label: 'Maybe',
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <path
-          d="M5.2 5.6C5.2 4.2 6.2 3.2 7.5 3.2C8.8 3.2 9.8 4.2 9.8 5.4C9.8 6.8 7.6 6.9 7.6 8.8"
-          stroke="currentColor"
-          strokeWidth="1.3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="7.6" cy="11.2" r="0.9" fill="currentColor" />
-      </svg>
-    ),
+    path: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   },
   {
     status: 'declined',
     label: 'Declined',
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <path d="M4 4L11 11M11 4L4 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
+    path: 'M6 18L18 6M6 6l12 12',
   },
   {
     status: 'needsAction',
     label: 'Unaccepted',
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-        <circle cx="7.5" cy="7.5" r="4.3" stroke="currentColor" strokeWidth="1.4" />
-      </svg>
-    ),
+    path: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
   },
 ];
+
+function RsvpGlyph({ path, size = 16, strokeWidth = 2.2 }: { path: string; size?: number; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <path d={path} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function RsvpStatusIcon({ status }: { status: CalendarEvent['selfResponseStatus'] }) {
+  const glyph = RSVP_CHIPS.find((chip) => chip.status === status) ?? RSVP_CHIPS[3];
+  return (
+    <span className={`calendar-event-rsvp calendar-event-rsvp--${glyph.status}`} role="img" aria-label={glyph.status} title={glyph.status}>
+      <RsvpGlyph path={glyph.path} size={14} strokeWidth={2.4} />
+    </span>
+  );
+}
 
 const DEFAULT_POPUP_NAME = 'notesdiary-cal-event';
 const POPUP_W = 560;
@@ -445,38 +433,35 @@ export function CalendarPane(props: CalendarPaneProps) {
     <div className="calendar-pane" data-calendar-theme={theme} ref={paneRef}>
       <div className="calendar-pane-scroll" ref={scrollRef}>
       <div className="calendar-rsvp-chips" ref={chipsRef}>
+        <div className="calendar-rsvp-chip-group" role="group" aria-label="RSVP Status Filters">
+          {RSVP_CHIPS.map((chip) => (
+            <button
+              key={chip.status}
+              type="button"
+              className={`calendar-rsvp-chip${selectedRsvpStatuses.has(chip.status) ? ' selected' : ''}`}
+              aria-pressed={selectedRsvpStatuses.has(chip.status)}
+              aria-label={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
+              title={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
+              onClick={() => handleToggle(chip.status)}
+            >
+              <RsvpGlyph path={chip.path} />
+              {chip.status === 'needsAction' && unacceptedCount > 0 && (
+                <span className="calendar-rsvp-chip-badge" aria-hidden="true">
+                  {unacceptedCount > 99 ? '99+' : unacceptedCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
-          className="calendar-rsvp-chip calendar-scroll-today-btn"
+          className="calendar-today-btn"
           aria-label="Scroll to today"
           title="Scroll to today"
           onClick={() => recenter('smooth')}
         >
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <rect x="2" y="3" width="11" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
-            <path d="M2 6H13" stroke="currentColor" strokeWidth="1.2"/>
-            <path d="M5 2V4M10 2V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <circle cx="7.5" cy="9.5" r="1.3" fill="currentColor"/>
-          </svg>
+          Today
         </button>
-        {RSVP_CHIPS.map((chip) => (
-          <button
-            key={chip.status}
-            type="button"
-            className={`calendar-rsvp-chip${selectedRsvpStatuses.has(chip.status) ? ' selected' : ''}`}
-            aria-pressed={selectedRsvpStatuses.has(chip.status)}
-            aria-label={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
-            title={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
-            onClick={() => handleToggle(chip.status)}
-          >
-            {chip.icon}
-            {chip.status === 'needsAction' && (
-              <span className="calendar-rsvp-chip-badge" aria-hidden="true">
-                {unacceptedCount > 99 ? '99+' : unacceptedCount}
-              </span>
-            )}
-          </button>
-        ))}
       </div>
 
       {needsScopeSources.map((s) => (
@@ -535,6 +520,10 @@ export function CalendarPane(props: CalendarPaneProps) {
                 if (event.isAllDay) {
                   return (
                     <div key={eventKey} className={`calendar-event-allday calendar-event-row--rsvp-${rsvpStatus}`}>
+                      <div className="calendar-event-header">
+                        <span className="calendar-event-time">All day</span>
+                        <RsvpStatusIcon status={event.selfResponseStatus} />
+                      </div>
                       <span className="calendar-event-title-wrap">
                         <span className="calendar-event-title">{event.summary}</span>
                         {props.renderEventAction?.(event)}
@@ -590,6 +579,7 @@ export function CalendarPane(props: CalendarPaneProps) {
                           Join
                         </a>
                       )}
+                      <RsvpStatusIcon status={event.selfResponseStatus} />
                     </div>
                     <div className="calendar-event-title-wrap">
                       {hasLink ? (
