@@ -867,18 +867,21 @@ describe('CalendarPane', () => {
     expect(todayGroup.querySelectorAll('.calendar-event-allday').length).toBe(0);
   });
 
-  it('renders the Scroll to today button before the RSVP chips', () => {
+  it('renders the RSVP chip group before the Scroll to today button', () => {
     render(<CalendarPane {...baseProps({ events: [] })} />);
 
     const scrollButton = screen.getByRole('button', { name: 'Scroll to today' });
     const acceptedButton = screen.getByRole('button', { name: 'Accepted' });
+    const chipGroup = screen.getByRole('group', { name: 'RSVP Status Filters' });
 
     expect(
-      scrollButton.compareDocumentPosition(acceptedButton) & Node.DOCUMENT_POSITION_FOLLOWING
+      acceptedButton.compareDocumentPosition(scrollButton) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
 
     const chipsContainer = document.querySelector('.calendar-rsvp-chips')!;
-    expect(chipsContainer.children[0]).toBe(scrollButton);
+    expect(chipGroup).toContainElement(acceptedButton);
+    expect(chipsContainer.children[0]).toBe(chipGroup);
+    expect(chipsContainer.children[1]).toBe(scrollButton);
   });
 
   it("clicking Scroll to today scrolls today's header into view smoothly", () => {
@@ -1835,7 +1838,10 @@ describe('CalendarPane', () => {
         expect(btns[0]).toHaveAttribute('title', btnName(t));
         expect(btns[0].querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
       }
-      expect(screen.queryAllByRole('img')).toHaveLength(0);
+      for (const action of screen.getAllByRole('button', { name: /^Insert "/ })) {
+        expect(within(action).queryAllByRole('img')).toHaveLength(0);
+      }
+      expect(screen.getAllByRole('img', { name: 'accepted', exact: true })).toHaveLength(2);
     });
 
     it('click passes title and url exactly once', async () => {

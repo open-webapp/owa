@@ -44,6 +44,39 @@
   --calendar-empty: #999;
   --calendar-chip-hover: #00a9ce;
   --calendar-checkbox: #22a6c0;
+  --calendar-chip-group-background: #f1f5f9;
+  --calendar-chip-group-border: rgb(226 232 240 / 80%);
+  --calendar-chip-active-background: #ffffff;
+  --calendar-chip-selected-ring: rgb(99 102 241 / 40%);
+  --calendar-chip-icon-accepted: #10b981;
+  --calendar-chip-icon-tentative: #f59e0b;
+  --calendar-chip-icon-declined: #f43f5e;
+  --calendar-chip-icon-needsAction: #0ea5e9;
+  --calendar-chip-badge-background: #0ea5e9;
+  --calendar-chip-badge-text: #ffffff;
+  --calendar-chip-badge-border: #ffffff;
+  --calendar-today-background: #f1f5f9;
+  --calendar-today-hover: #e2e8f0;
+  --calendar-today-text: #334155;
+  --calendar-card-background: #f8fafc;
+  --calendar-card-border: #e2e8f0;
+  --calendar-card-title: #0f172a;
+  --calendar-card-time: #64748b;
+  --calendar-card-active-background: #eef2ff;
+  --calendar-card-active-border: #a5b4fc;
+  --calendar-card-active-ring: rgb(99 102 241 / 20%);
+  --calendar-status-accepted-text: #059669;
+  --calendar-status-accepted-background: #ecfdf5;
+  --calendar-status-accepted-border: #a7f3d0;
+  --calendar-status-tentative-text: #f59e0b;
+  --calendar-status-tentative-background: #fffbeb;
+  --calendar-status-tentative-border: #fde68a;
+  --calendar-status-declined-text: #f43f5e;
+  --calendar-status-declined-background: #fff1f2;
+  --calendar-status-declined-border: #fecdd3;
+  --calendar-status-needsAction-text: #0ea5e9;
+  --calendar-status-needsAction-background: #f0f9ff;
+  --calendar-status-needsAction-border: #bae6fd;
   color-scheme: var(--calendar-scheme);
   color: var(--calendar-text);
 }
@@ -112,6 +145,9 @@
 
 .calendar-rsvp-chips {
   display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 64px;
   gap: 8px;
   padding: 12px 16px;
   flex-wrap: wrap;
@@ -121,51 +157,101 @@
   z-index: 2;
 }
 
+.calendar-rsvp-chip-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--calendar-chip-group-border);
+  border-radius: 12px;
+  background: var(--calendar-chip-group-background);
+}
+
 .calendar-rsvp-chip {
-  width: auto;
-  min-width: 32px;
-  height: 32px;
+  position: relative;
   box-sizing: border-box;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 8px;
+  padding: 6px;
   background: transparent;
-  color: var(--calendar-chip-text);
-  border: 1px solid var(--calendar-chip-border);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-.calendar-scroll-today-btn {
-  margin-right: 4px;
-  padding-right: 4px;
-  border-right: 1px solid var(--calendar-chip-border);
+.calendar-rsvp-chip svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+}
+
+.calendar-rsvp-chip[aria-label='Accepted'] {
+  color: var(--calendar-chip-icon-accepted);
+}
+
+.calendar-rsvp-chip[aria-label='Maybe'] {
+  color: var(--calendar-chip-icon-tentative);
+}
+
+.calendar-rsvp-chip[aria-label='Declined'] {
+  color: var(--calendar-chip-icon-declined);
+}
+
+.calendar-rsvp-chip[aria-label^='Unaccepted'] {
+  color: var(--calendar-chip-icon-needsAction);
 }
 
 .calendar-rsvp-chip:hover {
-  border-color: var(--calendar-chip-hover);
+  background: var(--calendar-chip-active-background);
 }
 
-.calendar-rsvp-chip.selected {
-  background: var(--calendar-chip-selected);
-  color: var(--calendar-chip-selected-text);
-  border-color: var(--calendar-chip-selected);
+.calendar-rsvp-chip-group .calendar-rsvp-chip.selected {
+  background: var(--calendar-chip-active-background);
+  box-shadow: 0 0 0 1px var(--calendar-chip-selected-ring);
 }
 
 .calendar-rsvp-chip-badge {
-  min-width: 16px;
-  padding: 1px 4px;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
   border-radius: 999px;
-  background: var(--calendar-badge);
-  color: var(--calendar-badge-text);
+  border: 1px solid var(--calendar-chip-badge-border);
+  background: var(--calendar-chip-badge-background);
+  color: var(--calendar-chip-badge-text);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.calendar-today-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--calendar-today-background);
+  color: var(--calendar-today-text);
+  font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
-  text-align: center;
-  white-space: nowrap;
+  cursor: pointer;
+}
+
+.calendar-today-btn:hover {
+  background: var(--calendar-today-hover);
 }
 
 .calendar-empty-state {
@@ -202,6 +288,10 @@
 .calendar-day-events {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
 }
 
 .calendar-day-ribbon {
@@ -242,43 +332,50 @@
   padding: 6px 0;
 }
 
-.calendar-event-allday {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-right: 3px solid var(--rsvp-bar, transparent);
-  border-bottom: 1px solid var(--calendar-border);
-}
-
+.calendar-event-allday,
 .calendar-event-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 16px;
-  border-right: 3px solid var(--rsvp-bar, transparent);
-  border-bottom: 1px solid var(--calendar-border);
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--calendar-card-border);
+  border-radius: 12px;
+  background: var(--calendar-card-background);
 }
 
-.calendar-event-allday {
-  background: var(--calendar-allday);
-  font-style: italic;
+.calendar-event-rsvp {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  padding: 4px;
+  border: 1px solid var(--status-border);
+  border-radius: 4px;
+  background: var(--status-background);
+  color: var(--status-text);
 }
 
-.calendar-event-row--rsvp-accepted {
-  --rsvp-bar: var(--calendar-rsvp-accepted);
+.calendar-event-rsvp--accepted {
+  --status-text: var(--calendar-status-accepted-text);
+  --status-background: var(--calendar-status-accepted-background);
+  --status-border: var(--calendar-status-accepted-border);
 }
 
-.calendar-event-row--rsvp-tentative {
-  --rsvp-bar: var(--calendar-rsvp-tentative);
+.calendar-event-rsvp--tentative {
+  --status-text: var(--calendar-status-tentative-text);
+  --status-background: var(--calendar-status-tentative-background);
+  --status-border: var(--calendar-status-tentative-border);
 }
 
-.calendar-event-row--rsvp-needsAction {
-  --rsvp-bar: var(--calendar-rsvp-needsAction);
+.calendar-event-rsvp--needsAction {
+  --status-text: var(--calendar-status-needsAction-text);
+  --status-background: var(--calendar-status-needsAction-background);
+  --status-border: var(--calendar-status-needsAction-border);
 }
 
-.calendar-event-row--rsvp-declined {
-  --rsvp-bar: var(--calendar-rsvp-declined);
+.calendar-event-rsvp--declined {
+  --status-text: var(--calendar-status-declined-text);
+  --status-background: var(--calendar-status-declined-background);
+  --status-border: var(--calendar-status-declined-border);
 }
 
 .calendar-event-header {
@@ -334,15 +431,18 @@
 }
 
 .calendar-event-time {
-  font-size: 12px;
-  color: var(--calendar-time);
-  min-width: 110px;
-  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--calendar-card-time);
+  min-width: 0;
 }
 
 .calendar-event-title {
-  font-size: 14px;
-  color: var(--calendar-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--calendar-card-title);
 }
 
 .calendar-event-organizer {
@@ -382,7 +482,9 @@
 
 .calendar-event-row--current,
 .calendar-event-row--selected {
-  background: var(--calendar-highlight);
+  border-color: var(--calendar-card-active-border);
+  box-shadow: 0 0 0 1px var(--calendar-card-active-ring);
+  background: var(--calendar-card-active-background);
 }
 
 /* Explicit dark and system-dark use exactly the same palette. The media query
@@ -427,6 +529,32 @@
   --calendar-input-border-style: solid;
   --calendar-option-hover: #2a2a2a;
   --calendar-option-active: #10262b;
+  --calendar-chip-group-background: rgb(30 41 59 / 90%);
+  --calendar-chip-group-border: rgb(51 65 85 / 60%);
+  --calendar-chip-active-background: #334155;
+  --calendar-chip-badge-border: #1e293b;
+  --calendar-today-background: #1e293b;
+  --calendar-today-hover: #334155;
+  --calendar-today-text: #e2e8f0;
+  --calendar-card-background: rgb(30 41 59 / 80%);
+  --calendar-card-border: #334155;
+  --calendar-card-title: #ffffff;
+  --calendar-card-time: #94a3b8;
+  --calendar-card-active-background: rgb(30 27 75 / 80%);
+  --calendar-card-active-border: #3730a3;
+  --calendar-card-active-ring: rgb(129 140 248 / 30%);
+  --calendar-status-accepted-text: #34d399;
+  --calendar-status-accepted-background: rgb(2 44 34 / 80%);
+  --calendar-status-accepted-border: #065f46;
+  --calendar-status-tentative-text: #fbbf24;
+  --calendar-status-tentative-background: rgb(69 26 3 / 80%);
+  --calendar-status-tentative-border: #92400e;
+  --calendar-status-declined-text: #fb7185;
+  --calendar-status-declined-background: rgb(76 5 25 / 80%);
+  --calendar-status-declined-border: #9f1239;
+  --calendar-status-needsAction-text: #38bdf8;
+  --calendar-status-needsAction-background: rgb(8 47 73 / 80%);
+  --calendar-status-needsAction-border: #075985;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -470,6 +598,32 @@
     --calendar-input-border-style: solid;
     --calendar-option-hover: #2a2a2a;
     --calendar-option-active: #10262b;
+    --calendar-chip-group-background: rgb(30 41 59 / 90%);
+    --calendar-chip-group-border: rgb(51 65 85 / 60%);
+    --calendar-chip-active-background: #334155;
+    --calendar-chip-badge-border: #1e293b;
+    --calendar-today-background: #1e293b;
+    --calendar-today-hover: #334155;
+    --calendar-today-text: #e2e8f0;
+    --calendar-card-background: rgb(30 41 59 / 80%);
+    --calendar-card-border: #334155;
+    --calendar-card-title: #ffffff;
+    --calendar-card-time: #94a3b8;
+    --calendar-card-active-background: rgb(30 27 75 / 80%);
+    --calendar-card-active-border: #3730a3;
+    --calendar-card-active-ring: rgb(129 140 248 / 30%);
+    --calendar-status-accepted-text: #34d399;
+    --calendar-status-accepted-background: rgb(2 44 34 / 80%);
+    --calendar-status-accepted-border: #065f46;
+    --calendar-status-tentative-text: #fbbf24;
+    --calendar-status-tentative-background: rgb(69 26 3 / 80%);
+    --calendar-status-tentative-border: #92400e;
+    --calendar-status-declined-text: #fb7185;
+    --calendar-status-declined-background: rgb(76 5 25 / 80%);
+    --calendar-status-declined-border: #9f1239;
+    --calendar-status-needsAction-text: #38bdf8;
+    --calendar-status-needsAction-background: rgb(8 47 73 / 80%);
+    --calendar-status-needsAction-border: #075985;
   }
 }
 

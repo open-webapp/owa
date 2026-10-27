@@ -33,14 +33,16 @@ describe('CalendarPane sticky headers CSS contract', () => {
   });
 
   it('uses clearly distinct RSVP indicator colors in each color scheme', () => {
-    expect(css).toMatch(/\.calendar-event-row--rsvp-accepted\s*\{\s*--rsvp-bar:\s*#2e7d32/);
-    expect(css).toMatch(/\.calendar-event-row--rsvp-tentative\s*\{\s*--rsvp-bar:\s*#d97706/);
-    expect(css).toMatch(/\.calendar-event-row--rsvp-needsAction\s*\{\s*--rsvp-bar:\s*#2563eb/);
-    expect(css).toMatch(/\.calendar-event-row--rsvp-declined\s*\{\s*--rsvp-bar:\s*#dc2626/);
-    expect(css).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*--rsvp-bar:\s*#4ade80/);
-    expect(css).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*--rsvp-bar:\s*#fbbf24/);
-    expect(css).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*--rsvp-bar:\s*#60a5fa/);
-    expect(css).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*--rsvp-bar:\s*#f87171/);
+    expect(css).not.toContain('--rsvp-bar');
+    for (const [status, light, dark] of [
+      ['accepted', '#059669', '#34d399'],
+      ['tentative', '#f59e0b', '#fbbf24'],
+      ['needsAction', '#0ea5e9', '#38bdf8'],
+      ['declined', '#f43f5e', '#fb7185'],
+    ]) {
+      expect(extractRuleBody(css, `.calendar-event-rsvp--${status}`)).toContain(`--status-text: ${light}`);
+      expect(css).toMatch(new RegExp(`@media\\s*\\(prefers-color-scheme:\\s*dark\\)[\\s\\S]*\\.calendar-event-rsvp--${status}\\s*\\{\\s*--status-text:\\s*${dark}`));
+    }
   });
 });
 

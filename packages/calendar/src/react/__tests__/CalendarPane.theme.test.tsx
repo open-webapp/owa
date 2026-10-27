@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { CalendarPane, type CalendarPaneProps } from '../../index.js';
 import { createFakeController, makeEvent, SOURCE, type RsvpSelection } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { paletteContractCss, rootPalettes } from './cssPaletteContract.js';
 
 const sources = [SOURCE, { id: 's2', email: 'other@example.com' }];
 const calendars = [
@@ -12,6 +15,37 @@ const calendars = [
 type Theme = CalendarPaneProps['theme'];
 
 describe('CalendarPane theme prop', () => {
+  it('retains complete independent palettes and identical explicit/system dark restyle tokens', () => {
+    const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf8');
+    const palettes = rootPalettes(css);
+    expect(palettes.dark).toEqual(palettes.systemDark);
+    for (const name of Object.keys(palettes.dark)) expect(palettes.light, `root reset for ${name}`).toHaveProperty(name);
+    for (const [role, light, dark] of [
+      ['card-background', '#f8fafc', 'rgb(30 41 59 / 80%)'],
+      ['card-border', '#e2e8f0', '#334155'],
+      ['card-title', '#0f172a', '#ffffff'],
+      ['card-time', '#64748b', '#94a3b8'],
+      ['chip-group-background', '#f1f5f9', 'rgb(30 41 59 / 90%)'],
+      ['chip-group-border', 'rgb(226 232 240 / 80%)', 'rgb(51 65 85 / 60%)'],
+      ['status-accepted-text', '#059669', '#34d399'],
+      ['status-accepted-background', '#ecfdf5', 'rgb(2 44 34 / 80%)'],
+      ['status-accepted-border', '#a7f3d0', '#065f46'],
+      ['status-tentative-text', '#f59e0b', '#fbbf24'],
+      ['status-tentative-background', '#fffbeb', 'rgb(69 26 3 / 80%)'],
+      ['status-tentative-border', '#fde68a', '#92400e'],
+      ['status-declined-text', '#f43f5e', '#fb7185'],
+      ['status-declined-background', '#fff1f2', 'rgb(76 5 25 / 80%)'],
+      ['status-declined-border', '#fecdd3', '#9f1239'],
+      ['status-needsAction-text', '#0ea5e9', '#38bdf8'],
+      ['status-needsAction-background', '#f0f9ff', 'rgb(8 47 73 / 80%)'],
+      ['status-needsAction-border', '#bae6fd', '#075985'],
+    ]) {
+      expect(palettes.light[`--calendar-${role}`], `light ${role}`).toBe(light);
+      expect(palettes.dark[`--calendar-${role}`], `dark ${role}`).toBe(dark);
+    }
+    expect(() => paletteContractCss(css)).not.toThrow();
+  });
+
   it.each(['uncached error', 'cached error', 'loading', 'empty'] as const)(
     'keeps %s content and callbacks stable with live modes and a legacy controller', (state) => {
       const cached = state === 'cached error';
