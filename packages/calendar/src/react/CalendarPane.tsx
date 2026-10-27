@@ -6,6 +6,7 @@ import {
   groupByDay,
   getOrganizerLabel,
   formatDayHeader,
+  formatRibbonLabel,
   isEventCurrent,
   findNextUpcomingEvent,
   getCalendarEventKey,
@@ -485,6 +486,16 @@ export function CalendarPane(props: CalendarPaneProps) {
                 {formatDayHeader(group.dateKey, todayIso)}
               </div>
 
+              {group.events.length > 0 && (
+              <div className="calendar-day-body">
+              <div
+                className="calendar-day-ribbon"
+                aria-hidden="true"
+                data-today={group.dateKey === todayIso ? 'true' : undefined}
+              >
+                <span className="calendar-day-ribbon-label">{formatRibbonLabel(group.dateKey)}</span>
+              </div>
+              <div className="calendar-day-events">
               {group.events.map((event) => {
                 const eventKey = getCalendarEventKey(event);
                 const calendar = calendarsByKey.get(`${event.sourceId}\u0000${event.calendarId}`);
@@ -608,6 +619,9 @@ export function CalendarPane(props: CalendarPaneProps) {
                   </div>
                 );
               })}
+              </div>
+              </div>
+              )}
             </div>
           ))}
           {loading && <p className="calendar-empty-state-text">Loading calendar…</p>}

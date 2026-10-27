@@ -209,7 +209,7 @@ function panePalette(dark: boolean, prefix = '') {
     ['tentative', 'rgb(217, 119, 6)', 'rgb(251, 191, 36)'],
     ['needsAction', 'rgb(37, 99, 235)', 'rgb(96, 165, 250)'],
     ['declined', 'rgb(220, 38, 38)', 'rgb(248, 113, 113)'],
-  ]) s(`.calendar-event-row--rsvp-${status}`, { 'border-left-color': dark ? night : light });
+  ]) s(`.calendar-event-row--rsvp-${status}`, { 'border-right-color': dark ? night : light });
 }
 async function selectorPalette(dark: boolean, prefix = '') {
   // Click leaves the real pointer over the trigger; measure its resting palette.
@@ -279,7 +279,7 @@ for (const os of ['light', 'dark'] as const) {
     style('.calendar-day-header', { 'background-color': r.header, padding: '8px 16px' });
     style('.calendar-event-title', { color: r.title });
     style('.calendar-rsvp-chip.selected', { 'background-color': r.chip, height: '32px' });
-    style('.calendar-event-row', { padding: '10px 16px', 'border-left-width': '3px' });
+    style('.calendar-event-row', { padding: '10px 16px', 'border-right-width': '3px' });
     await act(() => userEvent.click(el('[role=combobox]')));
     style('.calendar-selector-dropdown', { 'background-color': r.dropdown, color: r.text, 'box-shadow': r.shadow, 'min-width': '220px', padding: '8px', 'border-radius': '6px' });
     expect(el('[role=combobox]').getBoundingClientRect().top - el('.calendar-selector-dropdown').getBoundingClientRect().bottom).toBeCloseTo(6);
@@ -410,7 +410,7 @@ for (const width of [360, 1000]) {
       expect(el('.calendar-rsvp-chips').getBoundingClientRect().height).toBe(56);
       expect(el('.calendar-pane-footer').getBoundingClientRect().height).toBe(64);
       await expect.poll(() => getComputedStyle(el('.calendar-day-header')).top).toBe('56px');
-      style('.calendar-event-row', { padding: '10px 16px', gap: '8px', 'border-left-width': '3px', 'border-bottom-width': '1px' });
+      style('.calendar-event-row', { padding: '10px 16px', gap: '8px', 'border-right-width': '3px', 'border-bottom-width': '1px' });
       style('.calendar-event-title', { 'font-size': '14px' });
       style('.calendar-event-time', { 'font-size': '12px', 'min-width': '110px' });
       await click('[role=combobox]');

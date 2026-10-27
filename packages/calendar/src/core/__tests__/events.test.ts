@@ -8,6 +8,7 @@ import {
   getOrganizerLabel,
   groupByDay,
   formatDayHeader,
+  formatRibbonLabel,
   isEventCurrent,
   findNextUpcomingEvent,
   reconcileSelectedCalendarIds,
@@ -499,5 +500,19 @@ describe('parseEvents', () => {
 
   it('returns [] for an empty list', () => {
     expect(parseEvents([], ctx)).toEqual([]);
+  });
+});
+
+describe('formatRibbonLabel', () => {
+  it('formats as "Mmm D"', () => {
+    expect(formatRibbonLabel('2026-10-26')).toBe('Oct 26');
+  });
+  it('has no Today/Tomorrow, year, or zero padding', () => {
+    expect(formatRibbonLabel('2026-10-27')).toBe('Oct 27');
+    expect(formatRibbonLabel('2031-01-01')).toBe('Jan 1');
+    expect(formatRibbonLabel('2026-12-31')).toBe('Dec 31');
+  });
+  it('matches the month-day part of the day header', () => {
+    expect(formatDayHeader('2026-10-28', '2026-10-26')).toBe(formatRibbonLabel('2026-10-28'));
   });
 });
