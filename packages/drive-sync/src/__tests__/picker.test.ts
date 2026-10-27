@@ -198,7 +198,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     // Simulate user picking two files
     pickerFake.simulatePick([
@@ -249,7 +249,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     // Simulate picking two files, but only one exists in the drive
     pickerFake.simulatePick([
@@ -287,7 +287,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     pickerFake.simulateCancel()
 
@@ -312,21 +312,21 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
 
     queueToken()
     const pick1 = project1.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
     pickerFake.simulateCancel()
     await expect(pick1).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Second call with same project
     queueToken()
     const pick2 = project1.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(2))
     pickerFake.simulateCancel()
     await expect(pick2).rejects.toBeInstanceOf(PickerCancelledError)
 
     // Third call with different project from same DriveSync instance
     queueToken()
     const pick3 = project2.pickFile({ apiKey: 'key1', appId: 'app-id-42' })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(3))
     pickerFake.simulateCancel()
     await expect(pick3).rejects.toBeInstanceOf(PickerCancelledError)
 
@@ -350,7 +350,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created (happens after token acquisition)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     const call = pickerFake.calls[0]
@@ -383,7 +383,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created (happens after token acquisition)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     const call = pickerFake.calls[0]
@@ -415,7 +415,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     pickerFake.simulateCancel()
 
@@ -439,7 +439,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
     })
 
     // Wait for the PickerBuilder to be created (happens after token acquisition)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     const mimeTypes = pickerFake.calls[0].views[0].mimeTypes
@@ -471,7 +471,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     expect(pickerFake.calls[0].disposed).toBeUndefined() // not yet disposed
@@ -495,7 +495,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls[0].disposed).toBeUndefined()
 
@@ -521,7 +521,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     // Simulate pick once
     pickerFake.simulatePick([{ fileId: 'f1', name: 'file.txt', mimeType: 'text/plain' }])
@@ -547,7 +547,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     expect(pickerFake.calls[0].origin).toBe(window.location.origin)
@@ -570,7 +570,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       includeFolders: true,
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     expect(pickerFake.calls[0].views[0].includeFolders).toBe(true)
@@ -592,7 +592,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     expect(pickerFake.calls).toHaveLength(1)
     expect(pickerFake.calls[0].views[0].includeFolders).toBeUndefined()
@@ -626,7 +626,7 @@ describe('picker: openPicker() and pickFile() integration (T7)', () => {
       oauthToken: 'auth-token',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(pickerFake.calls).toHaveLength(1))
 
     pickerFake.simulatePick([{ fileId: 'f1', name: 'file.txt', mimeType: 'text/plain' }])
 
