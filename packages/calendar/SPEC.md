@@ -87,11 +87,14 @@ Initial: `ok` for every source.
 - CalendarPane has one footer combobox opening a shared searchable dropdown, grouped under account headings for multiple sources. Clear resets only its account to primary (else first); filtered Select all adds only that account's matches, retaining existing selections. Each account keeps its last selected calendar, including a non-primary selection. Calendar IDs shared across accounts remain independent.
 - Exported standalone CalendarSelector retains its single-list props and behavior, including filtered Select all, Clear and last-selection protection.
 - Event popup opens via `window.open(url, popupName)` falling back to `_blank`.
+- Timed meeting headers show time on the left and a right-aligned `[Join] [RSVP glyph]` pair with a 4px gap, followed by title and organizer. Join is shown iff `joinUrl` is truthy and retains its URL, `_blank`, `noopener noreferrer` and click propagation stop. Without Join, the RSVP glyph stays right aligned. The pair stays together when the header wraps on narrow layouts.
 - Built-in copy is fixed: see README "Built-in copy".
 
 - Each day group has a 16px `aria-hidden` vertical ribbon left of its events showing a rotated `Mmm D` label (no year, no Today/Tomorrow; `formatRibbonLabel`); ribbons alternate between two tones by day parity (`data-parity="even|odd"`, days since 1970 of the date key mod 2), stable across scroll, filter and month boundaries. Today is not flagged on the ribbon. "Today" is the browser-local date. The RSVP bar is a 3px right border on event rows. The sticky day header is unchanged.
 
 ## Styling
+
+Join uses exactly the RSVP glyph's status foreground, background and border for accepted/tentative/needsAction/declined in light, dark and system modes. Both have a compact 24px outer height, 1px solid border and 4px radius; Join has intrinsic text-fitting width and 8px horizontal padding. Hover underlines Join without changing its status palette; keyboard focus shows a 2px theme-focus outline with 2px offset.
 
 `./styles.css` is standalone. Each `.calendar-pane` and `.calendar-selector` root has `data-calendar-theme` and resets the full semantic palette, including scoped native-control `color-scheme`. Light defaults, explicit-dark overrides and system-only dark media rules preserve the existing palette while preventing opposite-theme ancestor leakage. No document/body attributes or global theme state are changed. Built-in prompts, errors, loading/empty states, events, RSVP chips/badge, footer and selector controls are covered; hosts style their own `emptyState`, `sourceNotice` and `renderEventAction` content. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--calendar-day-ribbon-a` / `--calendar-day-ribbon-b` (alternating day ribbon colours by parity), `--rsvp-bar` (internal). Ribbon labels use measured bounds instead of the former `--calendar-day-header-height` offset. No required host variables.
 

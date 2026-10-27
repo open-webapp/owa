@@ -257,17 +257,23 @@ function panePalette(dark: boolean, prefix = '') {
     'border-color': rgb(dark, 'rgb(165, 180, 252)', 'rgb(55, 48, 163)'),
     'box-shadow': rgb(dark, 'rgba(99, 102, 241, 0.2) 0px 0px 0px 1px', 'rgba(129, 140, 248, 0.3) 0px 0px 0px 1px'),
   });
-  s('.calendar-event-join', { color: rgb(dark, 'rgb(0, 169, 206)', 'rgb(34, 208, 239)'), 'border-color': rgb(dark, 'rgb(0, 169, 206)', 'rgb(34, 208, 239)') });
   for (const [status, light, night, lightBg, nightBg, lightBorder, nightBorder] of [
     ['accepted', 'rgb(5, 150, 105)', 'rgb(52, 211, 153)', 'rgb(236, 253, 245)', 'rgba(2, 44, 34, 0.8)', 'rgb(167, 243, 208)', 'rgb(6, 95, 70)'],
     ['tentative', 'rgb(245, 158, 11)', 'rgb(251, 191, 36)', 'rgb(255, 251, 235)', 'rgba(69, 26, 3, 0.8)', 'rgb(253, 230, 138)', 'rgb(146, 64, 14)'],
     ['needsAction', 'rgb(14, 165, 233)', 'rgb(56, 189, 248)', 'rgb(240, 249, 255)', 'rgba(8, 47, 73, 0.8)', 'rgb(186, 230, 253)', 'rgb(7, 89, 133)'],
     ['declined', 'rgb(244, 63, 94)', 'rgb(251, 113, 133)', 'rgb(255, 241, 242)', 'rgba(76, 5, 25, 0.8)', 'rgb(254, 205, 211)', 'rgb(159, 18, 57)'],
-  ]) s(`.calendar-event-rsvp--${status}`, {
-    color: dark ? night : light, 'background-color': dark ? nightBg : lightBg,
-    'border-color': dark ? nightBorder : lightBorder,
-    padding: '4px', 'border-radius': '4px', 'border-width': '1px', width: '14px', height: '14px',
-  });
+  ]) {
+    s(`.calendar-event-row--rsvp-${status} .calendar-event-join`, {
+      color: dark ? night : light, 'background-color': dark ? nightBg : lightBg,
+      'border-color': dark ? nightBorder : lightBorder,
+      'border-width': '1px', 'border-style': 'solid', 'border-radius': '4px',
+    });
+    s(`.calendar-event-rsvp--${status}`, {
+      color: dark ? night : light, 'background-color': dark ? nightBg : lightBg,
+      'border-color': dark ? nightBorder : lightBorder,
+      padding: '4px', 'border-radius': '4px', 'border-width': '1px', width: '14px', height: '14px',
+    });
+  }
   for (const [status, light, night] of [
     ['accepted', 'rgb(5, 150, 105)', 'rgb(52, 211, 153)'],
     ['tentative', 'rgb(245, 158, 11)', 'rgb(251, 191, 36)'],
@@ -425,7 +431,7 @@ for (const theme of ['light', 'dark'] as const) {
     await userEvent.hover(el('.calendar-event-title-link'));
     style('.calendar-event-title-link .calendar-event-title', { 'text-decoration-line': 'underline' });
     await userEvent.hover(el('.calendar-event-join'));
-    style('.calendar-event-join', { 'background-color': rgb(dark, 'rgb(240, 248, 251)', 'rgb(42, 42, 42)') });
+    style('.calendar-event-join', { 'background-color': rgb(dark, 'rgb(236, 253, 245)', 'rgba(2, 44, 34, 0.8)'), 'text-decoration-line': 'underline' });
     style('.calendar-rsvp-chip:not(.selected)', { 'background-color': 'rgba(0, 0, 0, 0)', 'box-shadow': 'none' });
     expect(el('.calendar-rsvp-chip:not(.selected)').getAttribute('aria-label')).toBe('Unaccepted (1)');
     expect(el('.calendar-rsvp-chip:not(.selected)').getAttribute('aria-pressed')).toBe('false');
@@ -492,7 +498,7 @@ for (const width of [360, 1000]) {
         style(selector, { padding: '10px', gap: '6px', 'border-width': '1px', 'border-radius': '12px' });
         const card = el(selector);
         const header = card.querySelector('.calendar-event-header')!;
-        const icon = header.lastElementChild!;
+        const icon = header.querySelector('.calendar-event-rsvp')!;
         expect(icon.getAttribute('role')).toBe('img');
         expect(card.querySelectorAll('[role=img]')).toHaveLength(1);
         const headerBounds = header.getBoundingClientRect();
