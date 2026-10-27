@@ -202,6 +202,7 @@ export function CalendarPane(props: CalendarPaneProps) {
   const hasScrolledForEventsRef = useRef(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [savedSelection, setSavedSelection] = useState<Set<RsvpStatus> | null>(null);
@@ -366,14 +367,20 @@ export function CalendarPane(props: CalendarPaneProps) {
     const paneEl = paneRef.current;
     if (!chipsEl || !paneEl) return;
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      // contentRect excludes padding; the sticky day-header offset needs the
-      // chip row's full border-box height (chips have vertical padding).
-      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-      paneEl.style.setProperty('--chip-row-height', `${height}px`);
+      for (const entry of entries) {
+        if (entry.target === scrollRef.current) {
+          // The day ribbon centers its label in the visible scroll area, so it needs that height.
+          paneEl.style.setProperty('--calendar-scroll-height', `${entry.target.getBoundingClientRect().height}px`);
+          continue;
+        }
+        // contentRect excludes padding; the sticky day-header offset needs the
+        // chip row's full border-box height (chips have vertical padding).
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+        paneEl.style.setProperty('--chip-row-height', `${height}px`);
+      }
     });
     observer.observe(chipsEl);
+    if (scrollRef.current) observer.observe(scrollRef.current);
     return () => observer.disconnect();
   }, [connected, needsReauth]);
 
@@ -425,7 +432,7 @@ export function CalendarPane(props: CalendarPaneProps) {
 
   return (
     <div className="calendar-pane" data-calendar-theme={theme} ref={paneRef}>
-      <div className="calendar-pane-scroll">
+      <div className="calendar-pane-scroll" ref={scrollRef}>
       <div className="calendar-rsvp-chips" ref={chipsRef}>
         <button
           type="button"
@@ -493,7 +500,9 @@ export function CalendarPane(props: CalendarPaneProps) {
                 aria-hidden="true"
                 data-today={group.dateKey === todayIso ? 'true' : undefined}
               >
-                <span className="calendar-day-ribbon-label">{formatRibbonLabel(group.dateKey)}</span>
+                <div className="calendar-day-ribbon-window">
+                  <span className="calendar-day-ribbon-label">{formatRibbonLabel(group.dateKey)}</span>
+                </div>
               </div>
               <div className="calendar-day-events">
               {group.events.map((event) => {

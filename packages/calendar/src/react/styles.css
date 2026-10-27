@@ -222,11 +222,18 @@
   color: var(--calendar-chip-selected-text);
 }
 
+.calendar-day-ribbon-window {
+  position: sticky;
+  top: calc(var(--chip-row-height, 44px) + var(--calendar-day-header-height, 33px));
+  /* Visible part of the ribbon: as tall as the scroll area below the sticky headers, capped at the ribbon. */
+  height: min(100%, calc(var(--calendar-scroll-height, 100vh) - var(--chip-row-height, 44px) - var(--calendar-day-header-height, 33px)));
+  display: flex;
+  align-items: center;
+}
+
 .calendar-day-ribbon-label {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  position: sticky;
-  top: calc(var(--chip-row-height, 44px) + var(--calendar-day-header-height, 33px));
   white-space: nowrap;
   padding: 6px 0;
 }
