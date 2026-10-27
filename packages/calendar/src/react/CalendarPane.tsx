@@ -211,12 +211,6 @@ export function CalendarPane(props: CalendarPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [savedSelection, setSavedSelection] = useState<Set<RsvpStatus> | null>(null);
-  const isExclusive = selectedRsvpStatuses.size === 1 && selectedRsvpStatuses.has('needsAction');
-
-  useEffect(() => {
-    if (!isExclusive && savedSelection !== null) setSavedSelection(null);
-  }, [isExclusive, savedSelection]);
 
   const unacceptedCount = useMemo(
     () => events.filter((event) => event.selfResponseStatus === 'needsAction').length,
@@ -248,20 +242,8 @@ export function CalendarPane(props: CalendarPaneProps) {
   const selectedEventKey = currentEventKeys.values().next().value ??
     (nextUpcomingEvent ? getCalendarEventKey(nextUpcomingEvent) : undefined);
 
-  function handleUnaccepted() {
-    if (isExclusive) {
-      props.onRsvpStatusesChange(savedSelection ?? new Set(DEFAULT_RSVP_STATUSES));
-      setSavedSelection(null);
-    } else {
-      setSavedSelection(new Set(selectedRsvpStatuses));
-      props.onRsvpStatusesChange(new Set<RsvpStatus>(['needsAction']));
-    }
-  }
-
   function handleToggle(status: RsvpStatus) {
-    const base = isExclusive ? savedSelection ?? DEFAULT_RSVP_STATUSES : selectedRsvpStatuses;
-    if (isExclusive) setSavedSelection(null);
-    props.onRsvpStatusesChange(toggleRsvpStatus(base, status));
+    props.onRsvpStatusesChange(toggleRsvpStatus(selectedRsvpStatuses, status));
   }
   const dayGroups = groupByDay(filteredEvents, todayIso);
 
@@ -371,24 +353,47 @@ export function CalendarPane(props: CalendarPaneProps) {
   useEffect(() => {
     const chipsEl = chipsRef.current;
     const paneEl = paneRef.current;
-    if (!chipsEl || !paneEl) return;
+    const scrollEl = scrollRef.current;
+    if (!chipsEl || !paneEl || !scrollEl) return;
+    const ribbons = Array.from(scrollEl.querySelectorAll<HTMLElement>('.calendar-day-ribbon'));
+    function updateRibbonWindows() {
+      const viewport = scrollEl!.getBoundingClientRect();
+      const chipsBottom = chipsEl!.getBoundingClientRect().bottom;
+      for (const ribbon of ribbons) {
+        const bounds = ribbon.getBoundingClientRect();
+        const header = ribbon.parentElement?.previousElementSibling;
+        const headerBottom = header?.getBoundingClientRect().bottom ?? chipsBottom;
+        const top = Math.max(bounds.top, viewport.top, chipsBottom, headerBottom);
+        const bottom = Math.min(bounds.bottom, viewport.bottom);
+        ribbon.style.setProperty('--calendar-ribbon-window-top', `${Math.min(bounds.height, Math.max(0, top - bounds.top))}px`);
+        ribbon.style.setProperty('--calendar-ribbon-window-height', `${Math.max(0, bottom - top)}px`);
+      }
+    }
+    // Observe layout inputs only: the absolutely positioned window cannot resize them.
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        if (entry.target === scrollRef.current) {
-          // The day ribbon centers its label in the visible scroll area, so it needs that height.
+        if (entry.target === scrollEl) {
           paneEl.style.setProperty('--calendar-scroll-height', `${entry.target.getBoundingClientRect().height}px`);
-          continue;
+        } else if (entry.target === chipsEl) {
+          // contentRect excludes padding; the sticky day-header offset needs the
+          // chip row's full border-box height (chips have vertical padding).
+          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+          paneEl.style.setProperty('--chip-row-height', `${height}px`);
         }
-        // contentRect excludes padding; the sticky day-header offset needs the
-        // chip row's full border-box height (chips have vertical padding).
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
-        paneEl.style.setProperty('--chip-row-height', `${height}px`);
       }
+      updateRibbonWindows();
     });
+    observer.observe(scrollEl);
     observer.observe(chipsEl);
-    if (scrollRef.current) observer.observe(scrollRef.current);
-    return () => observer.disconnect();
-  }, [connected, needsReauth]);
+    for (const header of dayHeaderRefs.current.values()) observer.observe(header);
+    for (const ribbon of ribbons) observer.observe(ribbon);
+    scrollEl.addEventListener('scroll', updateRibbonWindows, { passive: true });
+    updateRibbonWindows();
+    return () => {
+      observer.disconnect();
+      scrollEl.removeEventListener('scroll', updateRibbonWindows);
+    };
+  }, [connected, needsReauth, filteredEvents, todayIso, theme]);
 
   if (!connected) {
     return (
@@ -458,11 +463,11 @@ export function CalendarPane(props: CalendarPaneProps) {
           <button
             key={chip.status}
             type="button"
-            className={`calendar-rsvp-chip${(chip.status === 'needsAction' ? isExclusive : selectedRsvpStatuses.has(chip.status)) ? ' selected' : ''}`}
-            aria-pressed={chip.status === 'needsAction' ? isExclusive : selectedRsvpStatuses.has(chip.status)}
+            className={`calendar-rsvp-chip${selectedRsvpStatuses.has(chip.status) ? ' selected' : ''}`}
+            aria-pressed={selectedRsvpStatuses.has(chip.status)}
             aria-label={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
             title={chip.status === 'needsAction' ? `${chip.label} (${unacceptedCount})` : chip.label}
-            onClick={() => chip.status === 'needsAction' ? handleUnaccepted() : handleToggle(chip.status)}
+            onClick={() => handleToggle(chip.status)}
           >
             {chip.icon}
             {chip.status === 'needsAction' && (

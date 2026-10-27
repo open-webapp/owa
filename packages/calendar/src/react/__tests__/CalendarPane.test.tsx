@@ -131,7 +131,12 @@ describe('CalendarPane', () => {
     });
 
     function renderControlledSelection(initial: RsvpSelection) {
-      const props = baseProps();
+      const props = baseProps({ events: [
+        makeEvent({ id: 'accepted', summary: 'Accepted invitation', selfResponseStatus: 'accepted' }),
+        makeEvent({ id: 'tentative', summary: 'Maybe invitation', selfResponseStatus: 'tentative' }),
+        makeEvent({ id: 'declined', summary: 'Declined invitation', selfResponseStatus: 'declined' }),
+        makeEvent({ id: 'pending', summary: 'Pending invitation', selfResponseStatus: 'needsAction' }),
+      ] });
       const onRsvpStatusesChange = vi.fn();
       let changeFromHost!: (next: RsvpSelection) => void;
 
@@ -164,59 +169,135 @@ describe('CalendarPane', () => {
         expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', String(selection.has(status)));
       }
       expect(screen.getByRole('button', { name: /^Unaccepted/ })).toHaveAttribute(
-        'aria-pressed', String(selection.size === 1 && selection.has('needsAction')),
+        'aria-pressed', String(selection.has('needsAction')),
       );
     }
 
-    it('selects only needsAction when Unaccepted is clicked in a controlled host', () => {
+    function expectVisibleInvitations(names: string[]) {
+      for (const name of ['Accepted', 'Maybe', 'Declined', 'Pending']) {
+        expect(screen.queryByRole('link', { name: `${name} invitation` }) !== null).toBe(names.includes(name));
+      }
+    }
+
+    it('defaults show pending with O pressed', () => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set(DEFAULT_RSVP_STATUSES));
+      expectVisibleInvitations(['Accepted', 'Maybe', 'Pending']);
+      expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
+      expect(onRsvpStatusesChange).not.toHaveBeenCalled();
+    });
+
+    it('default O click hides only pending and the next click restores it', () => {
+      const original = new Set(DEFAULT_RSVP_STATUSES);
+      const { onRsvpStatusesChange } = renderControlledSelection(original);
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['accepted', 'tentative']));
+      expectVisibleInvitations(['Accepted', 'Maybe']);
+      expectPressedSelection(new Set(['accepted', 'tentative']));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(2, original);
+      expectVisibleInvitations(['Accepted', 'Maybe', 'Pending']);
+      expectPressedSelection(original);
+      expect(original).toEqual(new Set(['accepted', 'tentative', 'needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['accepted', 'Accepted'], ['tentative', 'Maybe'], ['declined', 'Declined'],
+    ] as const)('removing %s from mixed membership keeps only pending', (status, name) => {
+      const original: RsvpSelection = new Set([status, 'needsAction']);
+      const { onRsvpStatusesChange } = renderControlledSelection(original);
+      fireEvent.click(screen.getByRole('button', { name }));
+      expect(onRsvpStatusesChange).toHaveBeenCalledTimes(1);
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectVisibleInvitations(['Pending']);
+      expectPressedSelection(new Set(['needsAction']));
+      expect(original).toEqual(new Set([status, 'needsAction']));
+    });
+
+    it.each([
+      ['accepted', 'Accepted'], ['tentative', 'Maybe'], ['declined', 'Declined'], ['needsAction', 'Pending'],
+    ] as const)('singleton %s displays only its own invitation', (status, name) => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set([status]));
+      expectVisibleInvitations([name]);
+      expectPressedSelection(new Set([status]));
+      expect(onRsvpStatusesChange).not.toHaveBeenCalled();
+    });
+
+    it('host rerenders mixed, pending-only and empty selections without callbacks or mutation', () => {
+      const { onRsvpStatusesChange, changeFromHost } = renderControlledSelection(new Set(['accepted']));
+      const mixed: RsvpSelection = new Set(['tentative', 'needsAction']);
+      const pending: RsvpSelection = new Set(['needsAction']);
+      const empty: RsvpSelection = new Set();
+      for (const [selection, visible] of [
+        [mixed, ['Maybe', 'Pending']], [pending, ['Pending']], [empty, []],
+      ] as const) {
+        changeFromHost(selection);
+        expectVisibleInvitations([...visible]);
+        expect(onRsvpStatusesChange).not.toHaveBeenCalled();
+        expectPressedSelection(selection);
+      }
+      expect(mixed).toEqual(new Set(['tentative', 'needsAction']));
+      expect(pending).toEqual(new Set(['needsAction']));
+      expect(empty.size).toBe(0);
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenCalledTimes(1);
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
+      expectVisibleInvitations(['Pending']);
+      expect(empty.size).toBe(0);
+    });
+
+    it('adds needsAction without removing accepted or maybe in a controlled host', () => {
       const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted', 'tentative']));
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
 
-      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
-      expectPressedSelection(new Set(['needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['accepted', 'tentative', 'needsAction']));
+      expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
     });
 
-    it('restores the previous selection on a second Unaccepted click', () => {
+    it('returns to the original membership on a second Unaccepted click without mutating it', () => {
       const original: RsvpSelection = new Set(['accepted', 'tentative']);
       const { onRsvpStatusesChange } = renderControlledSelection(original);
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
 
-      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['accepted', 'tentative', 'needsAction']));
       expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(2, original);
       expectPressedSelection(original);
+      expect(original).toEqual(new Set(['accepted', 'tentative']));
+      expect(onRsvpStatusesChange).toHaveBeenCalledTimes(2);
     });
 
-    it('toggles Accepted against the saved selection and saves a fresh selection on reentry', () => {
+    it('toggles Accepted against current membership while keeping pending selected', () => {
       const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted', 'tentative']));
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
       fireEvent.click(screen.getByRole('button', { name: 'Accepted' }));
 
-      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
-      expectPressedSelection(new Set(['tentative']));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative', 'needsAction']));
+      expectPressedSelection(new Set(['tentative', 'needsAction']));
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
-      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
-      expectPressedSelection(new Set(['needsAction']));
-      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
       expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative']));
       expectPressedSelection(new Set(['tentative']));
+      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['tentative', 'needsAction']));
+      expectPressedSelection(new Set(['tentative', 'needsAction']));
     });
 
-    it('uses defaults when toggling Accepted empties the saved selection', () => {
-      const { onRsvpStatusesChange } = renderControlledSelection(new Set(['accepted']));
+    it.each([
+      ['accepted', 'Accepted'], ['tentative', 'Maybe'], ['declined', 'Declined'],
+    ] as const)('uses defaults when toggling the sole %s selection', (status, name) => {
+      const { onRsvpStatusesChange } = renderControlledSelection(new Set([status]));
 
-      fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
-      fireEvent.click(screen.getByRole('button', { name: 'Accepted' }));
+      fireEvent.click(screen.getByRole('button', { name }));
 
       expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(DEFAULT_RSVP_STATUSES));
       expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
     });
 
-    it('exits exclusive mode after an external host change and restores the fresh host selection', () => {
+    it('uses the fresh host selection after an external change', () => {
       const { onRsvpStatusesChange, changeFromHost } = renderControlledSelection(new Set(['accepted', 'tentative']));
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
@@ -224,14 +305,14 @@ describe('CalendarPane', () => {
       expectPressedSelection(new Set(['accepted']));
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
-      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
-      expectPressedSelection(new Set(['needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['accepted', 'needsAction']));
+      expectPressedSelection(new Set(['accepted', 'needsAction']));
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
       expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['accepted']));
       expectPressedSelection(new Set(['accepted']));
     });
 
-    it('restores defaults when the host initially loads only needsAction without a saved selection', () => {
+    it('uses defaults when toggling the sole needsAction selection', () => {
       const { onRsvpStatusesChange } = renderControlledSelection(new Set(['needsAction']));
       expectPressedSelection(new Set(['needsAction']));
 
@@ -241,17 +322,18 @@ describe('CalendarPane', () => {
       expectPressedSelection(new Set(DEFAULT_RSVP_STATUSES));
     });
 
-    it('treats a mixed needsAction selection as nonexclusive and restores it after two clicks', () => {
-      const original: RsvpSelection = new Set(['needsAction', 'accepted']);
+    it.each(['accepted', 'tentative', 'declined'] as const)('removes only pending from mixed %s membership and restores it', (status) => {
+      const original: RsvpSelection = new Set(['needsAction', status]);
       const { onRsvpStatusesChange } = renderControlledSelection(original);
       expectPressedSelection(original);
 
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
-      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
-      expectPressedSelection(new Set(['needsAction']));
+      expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(new Set([status]));
+      expectPressedSelection(new Set([status]));
       fireEvent.click(screen.getByRole('button', { name: /^Unaccepted/ }));
       expect(onRsvpStatusesChange).toHaveBeenLastCalledWith(original);
       expectPressedSelection(original);
+      expect(original).toEqual(new Set(['needsAction', status]));
     });
 
     it('keeps the ordinary Accepted toggle and later restores that resulting selection', () => {
