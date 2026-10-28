@@ -205,7 +205,7 @@ Timed meeting headers keep the time left and `[Join] [RSVP glyph]` right, with a
 
 Both components follow the OS/browser `prefers-color-scheme` preference live in `'system'` mode; omitting `theme` preserves this default. Explicit `'light'` and `'dark'` ignore OS changes. Hosts can change the prop on a mounted component (including back to `'system'` or `undefined`) without remounting, closing an open dropdown, losing its search query, focus or keyboard-active option, changing selected calendars, or resetting the pane's current RSVP selection. Theme changes do not trigger selection callbacks or controller refreshes.
 
-Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The single-trigger structure and cross-account keyboard navigation are preserved; the approved trigger geometry exception is described above. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
+Each pane forwards its requested mode to its unified grouped footer selector, including both account groups, account-local actions and the shared search. The single-trigger structure and cross-account keyboard navigation are preserved; the approved trigger geometry and action-only styling exceptions are described here. Standalone selectors choose their own mode: an omitted/system selector follows the OS even inside an explicitly dark or light pane. Adjacent and nested instances can use opposite modes independently; no document/body theme switch is applied.
 
 The host owns theme-picker UI and preference persistence (for example, saving a choice and passing it back as `theme`). The package neither stores the choice nor adds it to the controller. Hosts also own styling of `emptyState`, `sourceNotice` and `renderEventAction` slot content; give custom content explicit styles where needed rather than relying on the built-in palette.
 
@@ -224,6 +224,12 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
+
+Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.9.0 (BREAKING pre-1.0 minor)
+
+- User-approved replacement of the frozen native dropdown-action appearance: Done, Select all and Clear are flat and themed with hover and keyboard-focus treatment as described above. Hosts relying on the former native action appearance must adapt. Other visual, interaction, public API and storage contracts are preserved; no data migration is required.
 
 ## 0.8.0 (BREAKING pre-1.0 minor)
 

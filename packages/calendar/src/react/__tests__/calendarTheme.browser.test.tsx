@@ -34,7 +34,8 @@ function style(selector: string, values: Record<string, string>) {
 }
 
 // Literal palettes: original roles plus the T3 prototype RSVP control restyle.
-// UA-native light controls were measured in pinned Chromium; no token-derived expectations.
+// UA-native controls remain frozen except the user-approved flat dropdown actions.
+// All expectations are literal, never derived from the CSS tokens under test.
 const reference = {
   light: { surface: 'rgb(255, 255, 255)', border: 'rgb(238, 238, 238)', title: 'rgb(34, 34, 34)', header: 'rgb(245, 245, 245)', chip: 'rgb(255, 255, 255)', active: 'rgb(232, 245, 248)', dropdown: 'rgb(255, 255, 255)', text: 'rgb(26, 26, 26)', shadow: 'rgba(0, 0, 0, 0.15) 0px 4px 14px 0px' },
   dark: { surface: 'rgb(26, 26, 26)', border: 'rgb(51, 51, 51)', title: 'rgb(238, 238, 238)', header: 'rgb(34, 34, 34)', chip: 'rgb(51, 65, 85)', active: 'rgb(16, 38, 43)', dropdown: 'rgb(26, 26, 26)', text: 'rgb(238, 238, 238)', shadow: 'rgba(0, 0, 0, 0.5) 0px 4px 14px 0px' },
@@ -44,6 +45,27 @@ type Theme = 'light' | 'dark' | 'system' | undefined;
 const modes = [undefined, 'system', 'light', 'dark'] as const;
 const allRsvp = new Set(['accepted', 'tentative', 'needsAction', 'declined'] as const);
 const rgb = (dark: boolean, light: string, night: string) => dark ? night : light;
+function actionPalette(dark: boolean, prefix = '') {
+  const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(`${prefix}.calendar-selector-actions > button`));
+  const grouped = host.querySelectorAll(`${prefix}.calendar-selector-dropdown [role=group]`).length === 2;
+  expect(buttons.map(button => button.textContent)).toEqual(grouped
+    ? ['Done', 'Select all', 'Clear', 'Select all', 'Clear'] : ['Select all', 'Clear', 'Done']);
+  for (const [index, button] of buttons.entries()) {
+    const computed = getComputedStyle(button);
+    for (const [property, value] of Object.entries({
+      'background-color': 'rgba(0, 0, 0, 0)', 'border-width': '0px',
+      'box-shadow': 'none', color: dark ? 'rgb(238, 238, 238)' : 'rgb(26, 26, 26)', cursor: 'pointer',
+    })) expect.soft(computed.getPropertyValue(property), `${prefix}action ${index} ${button.textContent} ${property}`).toBe(value);
+    expect.soft(computed.font, `${prefix}action ${index} inherited font`).toBe(getComputedStyle(button.parentElement!).font);
+  }
+  for (const row of host.querySelectorAll<HTMLElement>(`${prefix}.calendar-selector-actions`)) {
+    const computed = getComputedStyle(row);
+    expect(computed.display).toBe('flex');
+    expect(computed.gap).toBe('8px');
+    expect(computed.marginTop).toBe('8px');
+    expect(computed.marginBottom).toBe('8px');
+  }
+}
 async function click(selector: string) { await act(() => userEvent.click(el(selector))); }
 async function key(value: string) { await act(() => userEvent.keyboard(value)); }
 async function fill(value: string) { await act(() => userEvent.fill(el('[role=searchbox]'), value)); }
@@ -294,7 +316,7 @@ async function selectorPalette(dark: boolean, prefix = '') {
   s('.calendar-selector-dropdown', { color: r.text, 'background-color': r.dropdown, 'box-shadow': r.shadow, 'border-color': rgb(dark, 'rgb(204, 204, 204)', 'rgb(51, 51, 51)') });
   s('.calendar-selector-heading', { color: r.text, opacity: '0.7' });
   s('[role=searchbox]', { color: rgb(dark, 'rgb(0, 0, 0)', 'rgb(238, 238, 238)'), 'background-color': rgb(dark, 'rgb(255, 255, 255)', 'rgb(42, 42, 42)'), 'border-top-color': rgb(dark, 'rgb(118, 118, 118)', 'rgb(68, 68, 68)'), 'border-top-width': dark ? '1px' : '2px', 'color-scheme': dark ? 'dark' : 'light' });
-  s('.calendar-selector-actions button', { color: rgb(dark, 'rgb(0, 0, 0)', 'rgb(238, 238, 238)'), 'background-color': rgb(dark, 'rgb(239, 239, 239)', 'rgb(42, 42, 42)'), 'border-top-width': dark ? '1px' : '2px' });
+  actionPalette(dark, prefix);
   s('[role=option]', { color: rgb(dark, 'rgb(0, 0, 0)', 'rgb(238, 238, 238)'), 'border-top-width': '0px' });
   s('[data-active=true]', { 'background-color': r.active });
   s('.calendar-selector-checkbox', { 'accent-color': 'rgb(34, 166, 192)', 'color-scheme': dark ? 'dark' : 'light' });
@@ -312,6 +334,63 @@ function richProps() {
   const props = baseProps({ events, calendars, selectedCalendarIds: ['a', 'b'], selectedRsvpStatuses: allRsvp });
   const sources = [SOURCE, { id: 's2', email: 'second@example.com' }];
   return { ...props, sources, controller: createFakeController({ sources, events, calendars: { s1: calendars, s2: calendars }, selected: { s1: ['a', 'b'], s2: ['a'] } }) };
+}
+
+for (const location of ['standalone', 'single footer', 'grouped footer'] as const) {
+  for (const theme of ['light', 'dark'] as const) {
+    it(`flat actions real hover and keyboard focus: ${location} ${theme}`, async () => {
+      await commands.scheme(theme === 'light' ? 'dark' : 'light');
+      await page.viewport(360, 900);
+      const props = location === 'single footer' ? baseProps({ calendars, selectedCalendarIds: ['a'] }) : richProps();
+      const onChange = vi.fn();
+      mount(location === 'standalone'
+        ? <CalendarSelector calendars={calendars} selectedIds={['a']} onChange={onChange} theme={theme} />
+        : <CalendarPane {...props} theme={theme} />);
+      host.style.width = '328px';
+      await click('[role=combobox]');
+      const trigger = el('[role=combobox]');
+      actionPalette(theme === 'dark');
+      const dropdown = el('.calendar-selector-dropdown').getBoundingClientRect();
+      expect(dropdown.left).toBeGreaterThanOrEqual(0);
+      expect(dropdown.right).toBeLessThanOrEqual(360);
+      expect(trigger.getBoundingClientRect().top - dropdown.bottom).toBeCloseTo(6);
+      if (location !== 'standalone') expect(el('.calendar-pane-footer').getBoundingClientRect().height).toBe(64);
+      const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>('.calendar-selector-actions > button'));
+      for (const [index, button] of buttons.entries()) {
+        const label = `action ${index} ${button.textContent}`;
+        const hovered = host.querySelectorAll<HTMLButtonElement>('.calendar-selector-actions > button')[index];
+        await userEvent.hover(hovered);
+        expect.soft(getComputedStyle(hovered).backgroundColor, `${label} hover`).toBe(theme === 'dark' ? 'rgb(42, 42, 42)' : 'rgb(240, 248, 251)');
+        // Pointer focus without activation must neither write selection nor decorate focus.
+        await key('{Escape}');
+        await click('[role=combobox]');
+        const current = host.querySelectorAll<HTMLButtonElement>('.calendar-selector-actions > button')[index];
+        // Native pointer down moves focus; suppress only this probe's click
+        // activation so Done stays open and selection callbacks stay untouched.
+        current.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+        }, { capture: true, once: true });
+        await act(() => userEvent.click(current));
+        expect(document.activeElement).toBe(current);
+        expect(current.matches(':focus-visible')).toBe(false);
+        expect.soft(getComputedStyle(current).outlineStyle, `${label} pointer outline`).toBe('none');
+        await click('[role=searchbox]');
+        const tabbableCount = host.querySelectorAll('button, input, [tabindex]').length;
+        for (let i = 0; i < tabbableCount && document.activeElement !== current; i++) await act(() => userEvent.tab());
+        expect(document.activeElement).toBe(current);
+        expect(current.matches(':focus-visible')).toBe(true);
+        const focus = getComputedStyle(current);
+        for (const [property, value] of Object.entries({
+          'outline-style': 'solid', 'outline-width': '2px', 'outline-offset': '2px',
+          'outline-color': theme === 'dark' ? 'rgb(34, 208, 239)' : 'rgb(26, 115, 232)',
+        })) expect.soft(focus.getPropertyValue(property), `${label} keyboard ${property}`).toBe(value);
+      }
+      expect(onChange).not.toHaveBeenCalled();
+      expect(props.controller.setSelectedIds).not.toHaveBeenCalled();
+      await page.viewport(1000, 900);
+    });
+  }
 }
 
 for (const os of ['light', 'dark'] as const) for (const theme of modes) {
@@ -743,6 +822,7 @@ for (const os of ['light', 'dark'] as const) {
         expect(el(`${scope} [role=combobox]`)).toBe(trigger);
         expect(trigger.getAttribute('aria-expanded')).toBe('true');
         style('[data-active=true]', { 'background-color': reference[dark ? 'dark' : 'light'].active });
+        actionPalette(dark);
         style('#runtime-pane .calendar-rsvp-chip.selected', { 'background-color': reference[dark ? 'dark' : 'light'].chip });
         expect(el('#runtime-pane [aria-label="Unaccepted (1)"]').getAttribute('aria-pressed')).toBe('true');
         expect(el('#runtime-pane [aria-label="Accepted"]').getAttribute('aria-pressed')).toBe('true');
@@ -757,6 +837,7 @@ for (const os of ['light', 'dark'] as const) {
       for (const liveOs of ['light', 'dark', 'light', os] as const) {
         await commands.scheme(liveOs);
         style('[data-active=true]', { 'background-color': reference[liveOs].active });
+        actionPalette(liveOs === 'dark');
         expect(el('[role=searchbox]')).toBe(input);
         expect(document.activeElement).toBe(input);
         expect((input as HTMLInputElement).value).toBe('a');
