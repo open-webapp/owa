@@ -1940,4 +1940,151 @@ describe('CalendarPane', () => {
       expect(screen.getByText('Offsite Day')).toBeInTheDocument();
     });
   });
+
+  describe('RSVP toggle scroll anchor', () => {
+    const H = 30;
+    const EV = 50;
+    const DAYS = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'];
+    const [A, B, C, D] = DAYS;
+    const origRect = HTMLElement.prototype.getBoundingClientRect;
+    let scrollEl: HTMLElement;
+    let scrollTop = 0;
+
+    function dayEvent(day: string, status: 'accepted' | 'tentative') {
+      return makeEvent({
+        id: `e-${day}`,
+        summary: `Event ${day}`,
+        selfResponseStatus: status,
+        start: { dateTime: `${day}T12:00:00` },
+        end: { dateTime: `${day}T13:00:00` },
+      });
+    }
+
+    function installGeometry() {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        const rect = (top: number) => ({ top, bottom: top + H, left: 0, right: 0, width: 0, height: H, x: 0, y: top, toJSON() {} }) as DOMRect;
+        if (this.classList.contains('calendar-pane-scroll')) return rect(0);
+        if (this.classList.contains('calendar-day-header')) {
+          const groups = Array.from(document.querySelectorAll('.calendar-day-group'));
+          const idx = groups.indexOf(this.closest('.calendar-day-group')!);
+          let y = 0;
+          for (let i = 0; i < idx; i++) y += H + EV * groups[i].querySelectorAll('a[href]').length;
+          return rect(y - scrollTop);
+        }
+        return origRect.call(this);
+      });
+    }
+
+    function headerFor(day: string) {
+      const label = Array.from(document.querySelectorAll('.calendar-day-header'))
+        .find((h) => h.closest('.calendar-day-group')?.querySelector('a[href]')?.textContent?.includes(day));
+      return label as HTMLElement | undefined;
+    }
+    const offsetOf = (day: string) => headerFor(day)!.getBoundingClientRect().top - 0;
+
+    function setup(statuses: Array<'accepted' | 'tentative'>, initial: RsvpSelection, withEvents = true) {
+      installGeometry();
+      const props = baseProps({ events: withEvents ? DAYS.map((d, i) => dayEvent(d, statuses[i])) : [] });
+      let setSel!: (s: RsvpSelection) => void;
+      function Host() {
+        const [sel, setSelection] = useState(initial);
+        setSel = setSelection;
+        return <CalendarPane {...props} selectedRsvpStatuses={sel} onRsvpStatusesChange={setSelection} />;
+      }
+      const { container } = render(<Host />);
+      scrollEl = container.querySelector('.calendar-pane-scroll') as HTMLElement;
+      scrollTop = 0;
+      Object.defineProperty(scrollEl, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTop,
+        set: (v: number) => { scrollTop = v; },
+      });
+      return { setSel: (s: RsvpSelection) => act(() => setSel(s)) };
+    }
+
+    function anchorOn(day: string, offset: number) {
+      scrollTop = 0;
+      scrollTop = headerFor(day)!.getBoundingClientRect().top - offset;
+      fireEvent.scroll(scrollEl);
+      expect(offsetOf(day)).toBe(offset);
+    }
+
+    const clickMaybe = () => fireEvent.click(screen.getByRole('button', { name: 'Maybe' }));
+    const selWith = (...s: Array<'accepted' | 'tentative' | 'needsAction'>) => new Set(s) as RsvpSelection;
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('keeps first visible header offset when earlier days are hidden', () => {
+      setup(['accepted', 'tentative', 'accepted', 'accepted'], selWith('accepted', 'tentative'));
+      anchorOn(C, 40);
+      // B tentative hidden; make A tentative too via separate scenario below
+      clickMaybe();
+      expect(headerFor(B)).toBeUndefined();
+      expect(offsetOf(C)).toBe(40);
+    });
+
+    it('hides multiple earlier days (A and B) and keeps offset', () => {
+      setup(['tentative', 'tentative', 'accepted', 'accepted'], selWith('accepted', 'tentative'));
+      anchorOn(C, 40);
+      clickMaybe();
+      expect(headerFor(A)).toBeUndefined();
+      expect(headerFor(B)).toBeUndefined();
+      expect(offsetOf(C)).toBe(40);
+    });
+
+    it('anchors to the next following day when the anchor day is hidden', () => {
+      setup(['accepted', 'accepted', 'tentative', 'accepted'], selWith('accepted', 'tentative'));
+      anchorOn(C, 40);
+      const dOffsetBefore = offsetOf(D);
+      clickMaybe();
+      expect(headerFor(C)).toBeUndefined();
+      expect(offsetOf(D)).toBe(dOffsetBefore);
+    });
+
+    it('anchors to the nearest previous day when anchor and all later days are hidden', () => {
+      setup(['tentative', 'accepted', 'tentative', 'tentative'], selWith('accepted', 'tentative'));
+      anchorOn(C, 40);
+      const bOffsetBefore = offsetOf(B);
+      clickMaybe();
+      expect(headerFor(A)).toBeUndefined();
+      expect(headerFor(C)).toBeUndefined();
+      expect(headerFor(D)).toBeUndefined();
+      expect(offsetOf(B)).toBe(bOffsetBefore);
+    });
+
+    it('keeps offset when a toggle re-adds earlier days', () => {
+      setup(['tentative', 'tentative', 'accepted', 'accepted'], selWith('accepted'));
+      expect(headerFor(A)).toBeUndefined();
+      // offset 0 (not 40): the always-present today group would otherwise be the real first visible header
+      anchorOn(C, 0);
+      clickMaybe();
+      expect(headerFor(A)).toBeDefined();
+      expect(offsetOf(C)).toBe(0);
+    });
+
+    it('does not touch scrollTop when no scroll event has occurred', () => {
+      setup(['tentative', 'tentative', 'accepted', 'accepted'], selWith('accepted', 'tentative'));
+      scrollTop = 123;
+      clickMaybe();
+      expect(scrollTop).toBe(123);
+    });
+
+    it('does not touch scrollTop when there are no events', () => {
+      setup([], selWith('accepted', 'tentative'), false);
+      scrollTop = 77;
+      fireEvent.scroll(scrollEl);
+      clickMaybe();
+      expect(scrollTop).toBe(77);
+    });
+
+    it('anchors on external selectedRsvpStatuses change without a click', () => {
+      const { setSel } = setup(['tentative', 'tentative', 'accepted', 'accepted'], selWith('accepted', 'tentative'));
+      anchorOn(C, 40);
+      setSel(selWith('accepted'));
+      expect(headerFor(A)).toBeUndefined();
+      expect(offsetOf(C)).toBe(40);
+    });
+  });
 });
