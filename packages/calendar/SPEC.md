@@ -98,10 +98,18 @@ Join uses exactly the RSVP glyph's status foreground, background and border for 
 
 `./styles.css` is standalone. Each `.calendar-pane` and `.calendar-selector` root has `data-calendar-theme` and resets the full semantic palette, including scoped native-control `color-scheme`. Light defaults, explicit-dark overrides and system-only dark media rules preserve the existing palette while preventing opposite-theme ancestor leakage. No document/body attributes or global theme state are changed. Built-in prompts, errors, loading/empty states, events, RSVP chips/badge, footer and selector controls are covered; hosts style their own `emptyState`, `sourceNotice` and `renderEventAction` content. Variables: `--calendar-footer-height`, `--chip-row-height` (optional host overrides), `--calendar-day-ribbon-a` / `--calendar-day-ribbon-b` (alternating day ribbon colours by parity), `--rsvp-bar` (internal). Ribbon labels use measured bounds instead of the former `--calendar-day-header-height` offset. No required host variables.
 
+The existing approved selector-trigger exception retains its padded, rounded 36px-minimum trigger, decorative 12px chevron, themed surface/hover/keyboard focus, full accessible name with visual ellipsis, default 64px footer and 6px upward-dropdown clearance.
+
+The user-approved action-only visual exception applies to `.calendar-selector-actions > button` (Done, Select all and Clear), in standalone and grouped footer selectors. Resting background is transparent, border is zero, shadow is none, font is inherited, color uses `--calendar-selector-text` and cursor is pointer. Hover uses `--calendar-hover`; pointer focus has no decorative outline, and keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling and other native-control defaults remain unchanged. Selection semantics, account isolation, callbacks, keyboard behavior and Done/Escape focus return are preserved.
+
 ## Versioning
+
+Independent semver; tag `calendar-v<version>` publishes. Approved changes to frozen observable visual contracts also require a breaking pre-1.0 minor bump.
 
 Independent semver; tag `calendar-v<version>` publishes. Breaking changes to exports, row shapes, selection semantics or status semantics require a major (0.x: minor) bump. 0.2.0 is a BREAKING minor (selection semantics, cache/storage row fields, pane behavior); 0.1.0 rows still read.
 
 0.4.0 is a BREAKING pre-1.0 minor for the requested observable pane UI change from per-account footer triggers to one grouped selector; standalone selector compatibility is preserved.
 
 0.5.0 is an additive minor for optional component themes, with no migration or breaking behavior change. The default remains OS-selected styling.
+
+0.9.0 is a BREAKING pre-1.0 minor for the user-approved replacement of frozen native dropdown-action appearance with flat themed Done, Select all and Clear. Other visual, interaction, API and storage contracts remain intact; no data migration is required.

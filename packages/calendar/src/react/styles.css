@@ -729,6 +729,28 @@
   color: var(--calendar-control-text);
 }
 
+.calendar-selector-actions > button {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--calendar-selector-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-selector-actions > button:hover {
+  background: var(--calendar-hover);
+}
+
+.calendar-selector-actions > button:focus {
+  outline: none;
+}
+
+.calendar-selector-actions > button:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 2px;
+}
+
 .calendar-selector-checkbox {
   flex: none;
   margin: 0;
