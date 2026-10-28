@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CalendarEvent, RsvpStatus, Source } from '../core/types.js';
 import type { CalendarController } from '../core/controller.js';
 import {
@@ -198,6 +198,8 @@ export function CalendarPane(props: CalendarPaneProps) {
   const chipsRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
+  const anchorSnapshotRef = useRef<{ anchor: string; offsets: Map<string, number> } | null>(null);
+  const didMountRsvpRef = useRef(false);
   const [now, setNow] = useState(() => new Date());
 
   const unacceptedCount = useMemo(
@@ -229,6 +231,52 @@ export function CalendarPane(props: CalendarPaneProps) {
   const nextUpcomingEvent = findNextUpcomingEvent(filteredEvents, now);
   const selectedEventKey = currentEventKeys.values().next().value ??
     (nextUpcomingEvent ? getCalendarEventKey(nextUpcomingEvent) : undefined);
+
+  function captureAnchorSnapshot() {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const offsets = new Map<string, number>();
+    let anchor: string | undefined;
+    for (const [dateKey, header] of dayHeaderRefs.current) {
+      const rect = header.getBoundingClientRect();
+      offsets.set(dateKey, rect.top - scrollRect.top);
+      if (rect.bottom > scrollRect.top && (anchor === undefined || dateKey < anchor)) anchor = dateKey;
+    }
+    anchorSnapshotRef.current = anchor === undefined ? null : { anchor, offsets };
+  }
+
+  // Keep the visible date stable when RSVP filtering adds/removes day groups above the viewport.
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const onScroll = () => captureAnchorSnapshot();
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!didMountRsvpRef.current) {
+      didMountRsvpRef.current = true;
+      return;
+    }
+    const scrollEl = scrollRef.current;
+    const snap = anchorSnapshotRef.current;
+    if (!scrollEl || !snap) return;
+    const keys = Array.from(dayHeaderRefs.current.keys()).sort();
+    const target =
+      (dayHeaderRefs.current.has(snap.anchor) ? snap.anchor : undefined) ??
+      keys.find((k) => k > snap.anchor && snap.offsets.has(k)) ??
+      keys.reverse().find((k) => k < snap.anchor && snap.offsets.has(k));
+    const header = target ? dayHeaderRefs.current.get(target) : undefined;
+    if (target && header) {
+      const delta = header.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top - snap.offsets.get(target)!;
+      if (delta !== 0) scrollEl.scrollTop += delta;
+    }
+    captureAnchorSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRsvpStatuses]);
 
   function handleToggle(status: RsvpStatus) {
     props.onRsvpStatusesChange(toggleRsvpStatus(selectedRsvpStatuses, status));
