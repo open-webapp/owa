@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { CalendarInfo } from '../core/types.js';
 import { filterCalendarsByName, summarizeCalendarSelection } from '../core/events.js';
 
@@ -27,6 +27,30 @@ export function GroupedCalendarSelector({ groups, theme = 'system' }: { groups: 
   const visibleGroups = groups.map((group) => ({ ...group, visible: filterCalendarsByName(group.calendars, query) }));
   const visibleCalendars = visibleGroups.flatMap((group) => group.visible.map((calendar) => ({ calendar, group })));
   const optionId = (sourceId: string, calendarId: string) => `${listboxId}-${encodeURIComponent(JSON.stringify([sourceId, calendarId]))}`;
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const pane = root?.closest<HTMLElement>('.calendar-pane');
+    if (!open || !root || !pane) return;
+    function updateAvailableHeight() {
+      const top = Math.max(0, pane!.getBoundingClientRect().top);
+      const bottom = Math.min(window.innerHeight, root!.getBoundingClientRect().top - 6);
+      root!.style.setProperty('--owa-geometry-calendar-selector-available-height', `${Math.max(0, bottom - top)}px`);
+    }
+    // Observe layout inputs, not the absolutely positioned popup they constrain.
+    const observer = new ResizeObserver(updateAvailableHeight);
+    observer.observe(pane);
+    observer.observe(root);
+    window.addEventListener('resize', updateAvailableHeight);
+    window.addEventListener('scroll', updateAvailableHeight, true);
+    updateAvailableHeight();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateAvailableHeight);
+      window.removeEventListener('scroll', updateAvailableHeight, true);
+      root.style.removeProperty('--owa-geometry-calendar-selector-available-height');
+    };
+  }, [open, groups, query, theme]);
 
   useEffect(() => {
     if (open) searchRef.current?.focus();

@@ -15,6 +15,9 @@ export default defineConfig({
       screenshotFailures: false,
       viewport: { width: 1000, height: 900 },
       commands: {
+        async containmentViewport({ page }, width: number, height: number) {
+          await page.setViewportSize({ width, height });
+        },
         async scheme({ page }, value: 'light' | 'dark') {
           await page.emulateMedia({ colorScheme: value });
         },
