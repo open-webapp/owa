@@ -3,6 +3,8 @@
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
 > **0.8.0 is BREAKING.** See [0.8.0](#080-breaking-pre-10-minor) for independent Unaccepted toggling.
+>
+> **0.10.0 is BREAKING.** See [0.10.0](#0100-breaking-pre-10-minor) for the approved CalendarPane selector-popup geometry correction.
 
 ## Install
 
@@ -182,6 +184,8 @@ One footer combobox opens a shared searchable dropdown, with calendars grouped u
 
 The footer and standalone `CalendarSelector` share a padded, rounded trigger with a visible decorative chevron, themed hover surface and keyboard-only focus outline. Long labels ellipsize visually while retaining the full accessible name. This is a visual-only correction to the former native trigger geometry: click, native Enter/Space activation, search, keyboard navigation, Escape/Done focus return, combobox relationships and selection callbacks/rules are unchanged. The default footer remains 64px high, with the upward dropdown 6px above the trigger.
 
+In a `CalendarPane`, the upward dropdown now starts at the trigger's left edge and fits the pane's existing 16px footer-content inset. Its usual 220px minimum and 320px maximum yield to the available pane width when necessary. While it is open, the entire popup is limited to the pane/viewport space above the trigger after the preserved 6px clearance; search and actions stay reachable while the options list shrinks and scrolls (retaining its 240px cap when space allows). Geometry updates without closing the popup or resetting its query when its pane/root, window, scroll position, query, groups or theme layout changes. This is a popup-only change: it does not impose a pane root height or repair a separately unconfirmed missing-footer symptom. Standalone `CalendarSelector` placement, normal width and 240px listbox cap are unchanged.
+
 ### CalendarSelector props
 
 `calendars: CalendarInfo[]`, `selectedIds: string[]`, `onChange(ids)`, `heading?: string` (account heading in multi-source use), `theme?: 'system' | 'light' | 'dark'` (defaults to `'system'`, including when `undefined`). It has no slot props or `popupName`. At least one calendar stays selected (deselecting the last one is ignored). "Clear" resets to the primary calendar. Built-in copy: "Search calendars", "Select all", "Clear", "Done", "No calendars found", "No calendars available".
@@ -223,9 +227,14 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
-The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. This approved visual-only exception changes trigger geometry and its derived dropdown position, preserving surrounding layout and theme isolation. Import the shipped stylesheet for both footer and standalone use.
+The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.10.0 (BREAKING pre-1.0 minor)
+
+- Approved CalendarPane selector-popup geometry correction: the upward popup is aligned to the trigger's left edge, adapts to the pane's 16px content inset, and uses the pane/viewport space above the trigger as its complete height budget. Options shrink and scroll before search/actions become inaccessible.
+- The default 64px footer, 36px-minimum trigger and 6px upward clearance are preserved. There is no pane-height/fill change and no missing-footer fix. Standalone selector geometry, public API, selection/data behavior and storage schema are unchanged; no migration is required.
 
 ## 0.9.0 (BREAKING pre-1.0 minor)
 
