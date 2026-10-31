@@ -2,6 +2,7 @@ import { acceptCompletion, currentCompletions, setSelectedCompletion, startCompl
 import { EditorState } from '@codemirror/state'
 import { EditorView, runScopeHandlers } from '@codemirror/view'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { listAutocompleteTags } from '../tags.js'
 import { createAutocomplete } from '../editor/editorAutocomplete.js'
 
 const entries = [
@@ -111,5 +112,33 @@ describe('createAutocomplete', () => {
     const noTags = await createView('#', undefined, [])
     expect(currentCompletions(noTags.state)).toEqual([])
     expect(noTags.state.doc.toString()).toBe('#')
+  })
+
+  const famEntries = [
+    { id: 'f', text: '#my_action/1:1 #my_action/1:2 #my_action #my_action/1 #work', createdAt: 0 },
+  ]
+
+  it('offers and inserts full child id for #my_action/1 without duplicate #', async () => {
+    const view = await createView('#my_action/1', undefined, [{ id: 'a', text: '#my_action/1:1', createdAt: 0 }])
+    expect(currentCompletions(view.state).map(({ label }) => label)).toEqual(['my_action/1:1'])
+    expect(acceptCompletion(view)).toBe(true)
+    expect(view.state.doc.toString()).toBe('#my_action/1:1')
+    expect(view.state.selection.main.head).toBe(14)
+  })
+
+  it('handles prefix #my_action/1: and family with explicit parent and children', async () => {
+    const v1 = await createView('#my_action/1:', undefined, famEntries)
+    expect(currentCompletions(v1.state).map(({ label }) => label)).toEqual(['my_action/1:1', 'my_action/1:2'])
+    const v2 = await createView('#my_action', undefined, famEntries)
+    expect(currentCompletions(v2.state).map(({ label }) => label)).toEqual([
+      'my_action', 'my_action/1', 'my_action/1:1', 'my_action/1:2',
+    ])
+    expect(listAutocompleteTags(famEntries, 'my_action/1')).toEqual(['my_action/1', 'my_action/1:1', 'my_action/1:2'])
+  })
+
+  it('yields no candidates for #work/: without throwing', async () => {
+    const view = await createView('#work/:', undefined, famEntries)
+    expect(currentCompletions(view.state)).toEqual([])
+    expect(listAutocompleteTags(famEntries, 'work/:')).toEqual([])
   })
 })

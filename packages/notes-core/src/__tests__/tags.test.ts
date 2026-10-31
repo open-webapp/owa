@@ -88,12 +88,11 @@ describe('tags', () => {
       expect(result).toContainEqual({ text: '#1:1/foo', isTag: true });
     });
 
-    it('does not widen the /child segment for colon/digit (#work/1:1)', () => {
-      const result = splitParts('do #work/1:1 sync');
-      expect(result).toEqual([
+    it('accepts a colon-bearing numeric child (#my_action/1:1)', () => {
+      expect(splitParts('do #my_action/1:1 sync')).toEqual([
         { text: 'do ', isTag: false },
-        { text: '#work', isTag: true },
-        { text: '/1:1 sync', isTag: false },
+        { text: '#my_action/1:1', isTag: true },
+        { text: ' sync', isTag: false },
       ]);
     });
 
@@ -169,11 +168,8 @@ describe('tags', () => {
       expect(result[1]).toEqual({ text: '/ more text', isTag: false });
     });
 
-    it('does not nest into a digit after the slash (#tag/123)', () => {
-      const result = splitParts('#tag/123');
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ text: '#tag', isTag: true });
-      expect(result[1]).toEqual({ text: '/123', isTag: false });
+    it('accepts a numeric child (#work/123)', () => {
+      expect(splitParts('#work/123')).toEqual([{ text: '#work/123', isTag: true }]);
     });
 
     it('does not nest when a space separates tag from slash (#work /urgent)', () => {
@@ -181,6 +177,44 @@ describe('tags', () => {
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({ text: '#work', isTag: true });
       expect(result[1]).toEqual({ text: ' /urgent', isTag: false });
+    });
+  });
+
+  describe('child tag grammar', () => {
+    const tagOnly = (t: string, tag: string) =>
+      expect(splitParts(t)).toEqual([{ text: tag, isTag: true }]);
+    const split = (t: string, tag: string, rest: string) =>
+      expect(splitParts(t)).toEqual([
+        { text: tag, isTag: true },
+        { text: rest, isTag: false },
+      ]);
+
+    it('accepts #work/client:review', () => tagOnly('#work/client:review', '#work/client:review'));
+    it('accepts #1:1/foo', () => tagOnly('#1:1/foo', '#1:1/foo'));
+    it('keeps #a:b as a flat colon tag', () => tagOnly('#a:b', '#a:b'));
+    it('#work/1: -> #work/1 + ":"', () => split('#work/1:', '#work/1', ':'));
+    it('#work/a::b -> #work/a + "::b"', () => split('#work/a::b', '#work/a', '::b'));
+    it('#work/_x -> parent + plain suffix', () => split('#work/_x', '#work', '/_x'));
+    it('#work/:x -> parent + plain suffix', () => split('#work/:x', '#work', '/:x'));
+    it('#work/-x -> parent + plain suffix, no throw', () => split('#work/-x', '#work', '/-x'));
+    it('#/x is not a tag, no throw', () => {
+      expect(() => splitParts('#/x')).not.toThrow();
+      expect(splitParts('#/x').some(p => p.isTag)).toBe(false);
+    });
+    it('handles repeated and adjacent child tags', () => {
+      expect(extractTags('#work/123 #work/123')).toEqual(['#work/123', '#work/123']);
+      expect(splitParts('#a/1 #b/2').filter(p => p.isTag).map(p => p.text)).toEqual(['#a/1', '#b/2']);
+    });
+    it('date adjacent to full child token stays tag-only metadata', () => {
+      expect(isTagOnlySection('#work/1:1 @2024-01-15')).toBe(true);
+      expect(getEntryLevelTags('note\n\n#work/1:1 @2024-01-15')).toEqual(['#work/1:1']);
+    });
+    it('entry-level filtering recognizes full child tag and excludes siblings', () => {
+      const tags = getEntryLevelTags('note\n\n#my_action/1:1');
+      expect(tags).toContain('#my_action/1:1');
+      expect(tags).not.toContain('#my_action/1:2');
+      expect(tags).not.toContain('#my_action');
+      expect(isTagOnlySection('#my_action/1:1')).toBe(true);
     });
   });
 
@@ -905,10 +939,10 @@ describe('tags', () => {
       expect(result[1]).toEqual({ text: '/ more text', isTag: false });
     });
 
-    it('does not nest into a digit after the slash (#tag/123)', () => {
+    it('nests into a digit after the slash (#tag/123 is one tag)', () => {
       const result = splitPartsWithDate('#tag/123', '2026-01-05');
-      expect(result[0]).toEqual({ text: '#tag', isTag: true });
-      expect(result[1]).toEqual({ text: '/123', isTag: false });
+      expect(result[0]).toEqual({ text: '#tag/123', isTag: true });
+      expect(result).toHaveLength(1);
     });
 
     it('does not nest when a space separates tag from slash (#work /urgent)', () => {

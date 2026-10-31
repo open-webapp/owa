@@ -32,11 +32,13 @@ export const SECTION_DATE_TOKEN_RE = /(?<=^|\s)@(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})(
  * NOT a hierarchy separator — no rollup, exact-match selection. A dangling ':'
  * or a '::' run is not consumed (#x: -> tag #x + plain ':'; #a::b -> tag #a +
  * plain '::b').
- * Optional /child continuation (?:\/[a-zA-Z][\w-]*)? — unchanged: one level,
- * child must start with a letter; a dangling slash or a slash followed by a
- * digit is not consumed.
+ * Optional /child continuation — one level (one slash). The child uses the
+ * SAME segment grammar as the root: [0-9A-Za-z][\w-]*(?::[\w-]+)*, so a child
+ * may start with a digit and carry colon groups (#work/123, #work/client:review).
+ * A dangling slash, a child starting with '_' or ':' , or a dangling ':' is not
+ * consumed (#work/1: -> tag #work/1 + plain ':').
  */
-export const TAG_RE = /#[0-9A-Za-z][\w-]*(?::[\w-]+)*(?:\/[a-zA-Z][\w-]*)?/g;
+export const TAG_RE = /#[0-9A-Za-z][\w-]*(?::[\w-]+)*(?:\/[0-9A-Za-z][\w-]*(?::[\w-]+)*)?/g;
 
 export interface DateToken {
   index: number;
