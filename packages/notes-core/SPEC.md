@@ -12,7 +12,7 @@ Framework-free Notes Diary helpers at `.`; CodeMirror integration only at `./edi
 
 ### Tags And Modes
 
-`splitParts`, `splitSections`, `splitPartsWithDate`, `extractTags`, `listAutocompleteTags`, `isTagOnlySection`, `getEntryLevelTags`, `getEntryLevelDate`, `getExplicitSectionDate`, `resolveSectionDates`, `parseSectionDate`, and `findAcceptedDateToken` parse tags and `@date` metadata. `SECTION_DATE_TOKEN_RE` and `TAG_RE` are the corresponding patterns. `deriveMode` resolves `search > tag/date > all`.
+`splitParts`, `splitSections`, `splitPartsWithDate`, `extractTags`, `listAutocompleteTags`, `isTagOnlySection`, `getEntryLevelTags`, `getEntryLevelDate`, `getExplicitSectionDate`, `resolveSectionDates`, `parseSectionDate`, and `findAcceptedDateToken` parse tags and `@date` metadata. `SECTION_DATE_TOKEN_RE` and `TAG_RE` are the corresponding patterns. `TAG_RE` grammar: `#` + `[0-9A-Za-z][\w-]*(?::[\w-]+)*` root + at most one `/` child of the same shape; digit-leading children are valid. `#a:b` is a root tag, not a child of `#a`. Partial tokens split at the last valid piece (`#a/b/c` -> `#a/b` + `/c`; `#work/` -> `#work` + `/`; `#work/1:` -> `#work/1` + `:`; `#work/a::b` -> `#work/a` + `::b`; `#work/_x`, `#work/:x` -> `#work` + plain suffix). `deriveMode` resolves `search > tag/date > all`.
 
 Types: `AutocompleteTagEntry`, `Part`, `DateToken`, `AlreadyEmitted`, `ViewMode`.
 
@@ -54,4 +54,4 @@ Types: `DateTab`, `StickyRow`, `Day`, `PastItem`, `SectionSource`, `PastWeek`, `
 
 ## Versioning And Publishing
 
-Version `0.1.0` is exact-pinned by consumers. Release via branch, PR, passing checks, GitHub merge, then `notes-core-v0.1.0` on the merge commit; the tag workflow publishes it.
+Version `0.2.0` is exact-pinned by consumers. Release via branch, PR, passing checks, GitHub merge, then `notes-core-v0.2.0` on the merge commit; the tag workflow publishes it.

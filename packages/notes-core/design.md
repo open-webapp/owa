@@ -3,7 +3,7 @@
 ## Modules
 
 - `dateUtils`: validation, ISO parsing, date/time formatting, relative time.
-- `tags`: tag and `@date` token parsing, sections, entry metadata, autocomplete tag extraction.
+- `tags`: tag (`TAG_RE`: root + one optional digit-or-letter-leading child) and `@date` token parsing, sections, entry metadata, autocomplete tag extraction.
 - `mode`, `entryFiltering`: display-mode derivation and entry/section/tab filtering.
 - `stickyGroups`, `stickyOpen`: Todo board data and sticky navigation resolution.
 - `quickAdd`, `dateSuggest`: date-tagged quick-add text and date completions.
@@ -23,4 +23,4 @@
 
 ## Packaging
 
-`package.json` exports only `.` and `./editor`, ships `dist` and `README.md`, and is public npm package `@open-webapp/notes-core` at `0.1.0`. Consumers exact-pin this pre-1.0 version. Tagging merge commit `notes-core-v0.1.0` invokes the publish workflow.
+`package.json` exports only `.` and `./editor`, ships `dist` and `README.md`, and is public npm package `@open-webapp/notes-core` at `0.2.0`. Consumers exact-pin this pre-1.0 version. Tagging merge commit `notes-core-v0.2.0` invokes the publish workflow.

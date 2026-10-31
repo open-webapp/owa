@@ -5,10 +5,23 @@ Pure Notes Diary domain helpers. The main entry point has no React, storage, net
 ## Install
 
 ```bash
-npm install --save-exact @open-webapp/notes-core@0.1.0
+npm install --save-exact @open-webapp/notes-core@0.2.0
 ```
 
-Consumers must exact-pin `0.1.0`; this pre-1.0 package may change on a minor release.
+Consumers must exact-pin `0.2.0`; this pre-1.0 package may change on a minor release.
+
+## Tag Grammar
+
+Tag: `#` + root + optional single child. Root and child each match `[0-9A-Za-z][\w-]*(?::[\w-]+)*` (`TAG_RE`); child follows `/`.
+
+- `#a:b` is one root tag, not a child of `#a`; `:` segments belong to the root or child they follow.
+- Partial tokens end at the last valid piece; the rest is plain text: `#a/b/c` -> `#a/b` + `/c`; `#work/` -> `#work` + `/`; `#work/1:` -> `#work/1` + `:`; `#work/a::b` -> `#work/a` + `::b`; `#work/_x` and `#work/:x` -> `#work` + `/_x`, `/:x`.
+
+### Release note: 0.2.0 is BREAKING (0.1.0 to 0.2.0)
+
+- Children may start with a digit: `#tag/123` is now child `123` of `#tag`. In 0.1.0 it parsed as `#tag` + plain text `/123`.
+- Stored Markdown is reinterpreted on read; nothing is rewritten.
+- Hosts must exact-pin `0.2.0`.
 
 ## Entry Points
 
@@ -42,4 +55,4 @@ type FilterRule = { id: string; filter: string; fileName: string; isRemainder: b
 
 ## Release
 
-Create a branch and PR, pass required checks, merge through GitHub, then tag the merge commit `notes-core-v0.1.0`. The tag triggers package build, test, and public npm publish.
+Create a branch and PR, pass required checks, merge through GitHub, then tag the merge commit `notes-core-v0.2.0`. The tag triggers package build, test, and public npm publish.
