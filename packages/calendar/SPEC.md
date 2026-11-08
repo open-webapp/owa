@@ -91,7 +91,7 @@ Initial: `ok` for every source.
 - Timed meeting headers show time on the left and a right-aligned `[Join] [RSVP glyph]` pair with a 4px gap, followed by title and organizer. Join is shown iff `joinUrl` is truthy and retains its URL, `_blank`, `noopener noreferrer` and click propagation stop. Without Join, the RSVP glyph stays right aligned. The pair stays together when the header wraps on narrow layouts.
 - Built-in copy is fixed: see README "Built-in copy".
 
-- Each day group has a 16px `aria-hidden` vertical ribbon left of its events showing a rotated `Mmm D` label (no year, no Today/Tomorrow; `formatRibbonLabel`); ribbons alternate between two tones by day parity (`data-parity="even|odd"`, days since 1970 of the date key mod 2), stable across scroll, filter and month boundaries. Today is not flagged on the ribbon. "Today" is the browser-local date. The RSVP bar is a 3px right border on event rows. The sticky day header is unchanged.
+- Each day group has a 16px `aria-hidden` vertical ribbon left of its events showing a rotated `Mmm D` label (no year, no Today/Tomorrow; `formatRibbonLabel`); ribbons alternate between two tones by day parity (`data-parity="even|odd"`, days since 1970 of the date key mod 2), stable across scroll, filter and month boundaries. Today is not flagged on the ribbon. "Today" is the browser-local date. The RSVP bar is a 3px right border on event rows. Sticky day headers show `Today · {weekday}`, `Tomorrow · {weekday}`, otherwise `{weekday}` using the date key's full English weekday without timezone shifts or a year suffix. Tomorrow recognition crosses month/year boundaries. Header layout and vertical ribbon styling are unchanged.
 
 ## Styling
 

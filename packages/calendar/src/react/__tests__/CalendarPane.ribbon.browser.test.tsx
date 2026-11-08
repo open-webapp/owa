@@ -70,10 +70,10 @@ it.each([0, 100, 250])('centers the date label after empty Today (scrollTop=%i)'
   const groups = host.querySelectorAll('.calendar-day-group');
   expect(host.querySelectorAll('.calendar-day-header')).toHaveLength(2);
   expect(groups).toHaveLength(2);
-  expect(groups[0].querySelector('.calendar-day-header')?.textContent).toBe('Today · Oct 26');
+  expect(groups[0].querySelector('.calendar-day-header')?.textContent).toBe('Today · Monday');
   expect(groups[0].querySelectorAll('.calendar-event-row')).toHaveLength(0);
   expect(groups[0].querySelector('.calendar-day-ribbon')).toBeNull();
-  expect(groups[1].querySelector('.calendar-day-header')?.textContent).toBe('Tomorrow · Oct 27');
+  expect(groups[1].querySelector('.calendar-day-header')?.textContent).toBe('Tomorrow · Tuesday');
   expect(groups[1].querySelector('.calendar-day-ribbon')).not.toBeNull();
   expect(groups[1].querySelectorAll('.calendar-event-row')).toHaveLength(12);
   await expectVisibleCenter(scrollTop);
@@ -85,7 +85,7 @@ it.each([0, 100, 250])('centers the date label without an extra day header (scro
   await frame();
   expect(host.querySelectorAll('.calendar-day-header')).toHaveLength(1);
   expect(host.querySelectorAll('.calendar-day-group')).toHaveLength(1);
-  expect(q('.calendar-day-header').textContent).toBe('Today · Oct 27');
+  expect(q('.calendar-day-header').textContent).toBe('Today · Tuesday');
   expect(host.querySelectorAll('.calendar-day-ribbon')).toHaveLength(1);
   expect(host.querySelectorAll('.calendar-event-row')).toHaveLength(12);
   await expectVisibleCenter(scrollTop);

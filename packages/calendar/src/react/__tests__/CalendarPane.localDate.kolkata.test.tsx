@@ -23,6 +23,6 @@ describe('CalendarPane local "today" in Asia/Kolkata', () => {
   it('today is Oct 27 and tomorrow Oct 28 (addDaysToIso stays UTC-safe)', () => {
     const { container } = render(<CalendarPane {...baseProps({ events: [ev('a', '2026-10-27'), ev('b', '2026-10-28')] })} />);
     const h = Array.from(container.querySelectorAll('.calendar-day-header')).map((x) => x.textContent);
-    expect(h).toEqual(['Today · Oct 27', 'Tomorrow · Oct 28']);
+    expect(h).toEqual(['Today · Tuesday', 'Tomorrow · Wednesday']);
   });
 });
