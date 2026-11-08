@@ -62,6 +62,8 @@ export function runStorageAdapterContract(factory: () => StorageContractHarness 
           getToken: async () => 't',
           storage: h.storage,
           crypto,
+          // Keep literal legacy fixtures inside the read-time window, regardless of wall clock.
+          now: () => new Date('2026-10-09T12:00:00.000Z'),
         });
         await c.refresh();
         return { events: c.getEvents(), selected: c.getSelectedIds('src') };

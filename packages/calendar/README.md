@@ -235,6 +235,10 @@ The shared `.calendar-selector-trigger` uses border-box inline-flex, centered al
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
 
+## 0.11.1 (patch)
+
+- Pin the storage contract harness's injected controller clock near its literal legacy fixtures so adapter checks remain deterministic as the wall clock advances. Regression coverage runs the contract with wall clocks in 2000 and 2100.
+
 ## 0.10.0 (BREAKING pre-1.0 minor)
 
 - Approved CalendarPane selector-popup geometry correction: the upward popup is aligned to the trigger's left edge, adapts to the pane's 16px content inset, and uses the pane/viewport space above the trigger as its complete height budget. Options shrink and scroll before search/actions become inaccessible.
