@@ -64,7 +64,7 @@ describe('CalendarPane RSVP bar card restyle', () => {
   it('scrolls the today header smoothly when no timed event is available', () => {
     const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
     render(<CalendarPane {...baseProps()} />);
-    const header = screen.getByText('Today · Sep 27', { selector: '.calendar-day-header', exact: true });
+    const header = screen.getByText('Today · Sunday', { selector: '.calendar-day-header', exact: true });
     scroll.mockClear();
 
     fireEvent.click(screen.getByRole('button', { name: 'Scroll to today' }));

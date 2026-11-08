@@ -194,19 +194,18 @@ function addDaysToIso(dateKey: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/**
- * "Today · Sept 26" / "Tomorrow · Sept 27" / else "Sept 28"-style.
- * Includes year only when the event's year differs from today's year.
- */
+/** Full English weekday, prefixed with Today/Tomorrow relative to the local today key. */
 export function formatDayHeader(dateKey: string, today: string): string {
-  const { year: todayYear } = parseIsoDateParts(today);
-  const { year: eventYear } = parseIsoDateParts(dateKey);
-  const includeYear = eventYear !== todayYear;
-  const monthDay = formatMonthDay(dateKey, includeYear);
+  const { year, month, day } = parseIsoDateParts(dateKey);
+  // The key is a calendar date, not an instant to shift into the browser timezone.
+  const weekday = new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', {
+    weekday: 'long',
+    timeZone: 'UTC',
+  });
 
-  if (dateKey === today) return `Today · ${monthDay}`;
-  if (dateKey === addDaysToIso(today, 1)) return `Tomorrow · ${monthDay}`;
-  return monthDay;
+  if (dateKey === today) return `Today · ${weekday}`;
+  if (dateKey === addDaysToIso(today, 1)) return `Tomorrow · ${weekday}`;
+  return weekday;
 }
 
 interface RawEvent {

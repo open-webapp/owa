@@ -24,7 +24,7 @@ describe('CalendarPane local "today" in America/Los_Angeles', () => {
 
   it('labels the local date as Today and the next as Tomorrow', () => {
     const { container } = render(<CalendarPane {...baseProps({ events: [ev('a', '2026-10-26'), ev('b', '2026-10-27')] })} />);
-    expect(headers(container)).toEqual(['Today · Oct 26', 'Tomorrow · Oct 27']);
+    expect(headers(container)).toEqual(['Today · Monday', 'Tomorrow · Tuesday']);
   });
 
   it('scroll-to-today targets the Oct 26 header', () => {
@@ -38,7 +38,7 @@ describe('CalendarPane local "today" in America/Los_Angeles', () => {
       expect(spy).toHaveBeenCalled();
       const target = spy.mock.contexts[spy.mock.contexts.length - 1] as HTMLElement;
 expect(target.classList.contains('calendar-day-header')).toBe(true);
-      expect(target.textContent).toBe('Today · Oct 26');
+      expect(target.textContent).toBe('Today · Monday');
       expect(target).toBe(container.querySelector('.calendar-day-header'));
     } finally {
       spy.mockRestore();

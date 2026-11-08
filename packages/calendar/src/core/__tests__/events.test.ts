@@ -415,19 +415,27 @@ describe('formatDayHeader', () => {
   const today = '2026-09-26';
 
   it('formats today', () => {
-    expect(formatDayHeader('2026-09-26', today)).toBe('Today · Sep 26');
+    expect(formatDayHeader('2026-09-26', today)).toBe('Today · Saturday');
   });
 
   it('formats tomorrow', () => {
-    expect(formatDayHeader('2026-09-27', today)).toBe('Tomorrow · Sep 27');
+    expect(formatDayHeader('2026-09-27', today)).toBe('Tomorrow · Sunday');
   });
 
-  it('formats a plain future date without year', () => {
-    expect(formatDayHeader('2026-10-01', today)).toBe('Oct 1');
+  it('formats a plain future date as a full weekday', () => {
+    expect(formatDayHeader('2026-10-01', today)).toBe('Thursday');
   });
 
-  it('includes year when the event year differs from today\'s year', () => {
-    expect(formatDayHeader('2027-01-05', today)).toBe('Jan 5, 2027');
+  it('shows only the weekday when the event year differs from today\'s year', () => {
+    expect(formatDayHeader('2027-01-05', today)).toBe('Tuesday');
+  });
+
+  it('recognizes tomorrow across a year boundary', () => {
+    expect(formatDayHeader('2027-01-01', '2026-12-31')).toBe('Tomorrow · Friday');
+  });
+
+  it('formats past dates without a relative prefix', () => {
+    expect(formatDayHeader('2026-09-25', today)).toBe('Friday');
   });
 });
 
@@ -535,7 +543,8 @@ describe('formatRibbonLabel', () => {
     expect(formatRibbonLabel('2031-01-01')).toBe('Jan 1');
     expect(formatRibbonLabel('2026-12-31')).toBe('Dec 31');
   });
-  it('matches the month-day part of the day header', () => {
-    expect(formatDayHeader('2026-10-28', '2026-10-26')).toBe(formatRibbonLabel('2026-10-28'));
+  it('keeps the calendar date while the day header shows the weekday', () => {
+    expect(formatDayHeader('2026-10-28', '2026-10-26')).toBe('Wednesday');
+    expect(formatRibbonLabel('2026-10-28')).toBe('Oct 28');
   });
 });

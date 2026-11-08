@@ -215,6 +215,10 @@ The host owns theme-picker UI and preference persistence (for example, saving a 
 
 The exported standalone selector keeps its single-list props and behavior; Select all adds only search matches while retaining existing selections.
 
+### Day headers
+
+Sticky day headers show `Today · Sunday`, `Tomorrow · Monday`, or just the full English weekday for other dates. The weekday follows the date key without timezone shifts, including across year boundaries; Today remains the browser-local date. Vertical ribbon labels continue to show Month Day (for example, `Oct 26`), with the existing layout and styling.
+
 ### Host CSS
 
 Day ribbon styling: each day's ribbon alternates between two tones by day parity (`data-parity="even|odd"`), set with `--calendar-day-ribbon-a` and `--calendar-day-ribbon-b`. Parity is stable across scroll, filtering and month boundaries, and the ribbon does not mark today. Labels center in the actual ribbon/viewport intersection below the measured chips and that day's header, including empty Today before an event day. Short ribbons center within their bounds. Scroll, resize, rendered-content and mounted theme changes update measurements; `--calendar-day-header-height` no longer positions the label.
