@@ -2,7 +2,7 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
-> **0.8.0 is BREAKING.** See [0.8.0](#080-breaking-pre-10-minor) for independent Unaccepted toggling.
+> **0.12.0 is BREAKING.** See [0.12.0](#0120-breaking-pre-10-minor) for exclusive Unaccepted filtering and new RSVP defaults.
 >
 > **0.10.0 is BREAKING.** See [0.10.0](#0100-breaking-pre-10-minor) for the approved CalendarPane selector-popup geometry correction.
 
@@ -150,7 +150,7 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `sources` | `Source[]` | shown accounts; 2+ enables multi-source UI (per-source color and email) |
 | `controller` | `CalendarController` | |
 | `theme?` | `'system' \| 'light' \| 'dark'` | defaults to `'system'`, including when `undefined`; applies to every pane state and all internal selectors |
-| `selectedRsvpStatuses` | `Set<RsvpStatus>` | host-controlled filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative, needsAction (O pressed) |
+| `selectedRsvpStatuses` | `Set<RsvpStatus>` | host-controlled filter; `DEFAULT_RSVP_STATUSES` = accepted, tentative (O unpressed) |
 | `onRsvpStatusesChange` | `(next) => void` | |
 | `renderEventAction?` | `(event) => ReactNode` | per-event slot |
 | `connected?` | `boolean` | defaults to `sources.length > 0` (back-compat). `false` shows the not-connected block |
@@ -164,9 +164,9 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 
 #### RSVP chips
 
-The chips appear in order: Accepted, Maybe, Declined, Unaccepted (O). All four independently toggle current supplied membership. Defaults remain accepted, tentative, needsAction, so O is pressed by default.
+The chips appear in order: Accepted, Maybe, Declined, Unaccepted (O). Accepted, Maybe and Declined independently toggle current supplied membership. Defaults are accepted and tentative, so O is unpressed by default.
 
-O is pressed iff `needsAction` belongs to the selection, including mixed sets. Unanswered events follow that membership within existing calendar/window filters. Clicking O preserves other statuses; no previous RSVP selection is saved/restored. Removing the last status returns `DEFAULT_RSVP_STATUSES`: O-only -> O returns defaults with O still pressed. Explicit empty host selections remain empty; host rerenders do not normalize membership or emit callbacks.
+O is an exclusive shortcut: clicking it saves the current RSVP selection and selects only `needsAction`. Clicking O again restores that saved selection. O is pressed only when `needsAction` is the sole selected status. Unanswered events follow the active membership within existing calendar/window filters. Explicit empty host selections remain empty; host rerenders do not normalize membership or emit callbacks.
 
 The Unaccepted badge is always visible, including at zero. It counts `needsAction` events from the controller's selected-calendar, rolling ±30-day snapshot before RSVP filtering. Visible counts cap at `99+`; the chip's `aria-label` and `title` expose the full count.
 
@@ -235,6 +235,12 @@ The shared `.calendar-selector-trigger` uses border-box inline-flex, centered al
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
 
+## 0.12.0 (BREAKING pre-1.0 minor)
+
+- Unaccepted (O) is again an exclusive `needsAction` shortcut. It saves the current RSVP selection when enabled and restores it when disabled; it is no longer an independent toggle.
+- `DEFAULT_RSVP_STATUSES` now contains only accepted and tentative, so O is unpressed by default.
+- Hosts that persist RSVP selections, including selections containing `needsAction`, must adapt to the exclusive O and new-default behavior.
+
 ## 0.11.1 (patch)
 
 - Pin the storage contract harness's injected controller clock near its literal legacy fixtures so adapter checks remain deterministic as the wall clock advances. Regression coverage runs the contract with wall clocks in 2000 and 2100.
@@ -250,8 +256,8 @@ Done, Select all and Clear use the approved action-only flat styling via `.calen
 
 ## 0.8.0 (BREAKING pre-1.0 minor)
 
-- Unaccepted independently toggles `needsAction`, replacing the exclusive shortcut and local restoration introduced in 0.3.0. Hosts relying on pending-only callbacks or restoration must adapt to callbacks reflecting current membership.
-- Defaults and last-deselection fallback remain accepted/tentative/needsAction; O is pressed for defaults and mixed selections containing needsAction.
+- Unaccepted independently toggled `needsAction` at this release. This behavior changed in 0.12.0.
+- Defaults and last-deselection fallback were accepted/tentative/needsAction at this release.
 - Ribbon labels center in the measured visible intersection, including empty Today, scrolling, resizing and mounted theme changes.
 
 ## 0.7.0 (minor, breaking-visual)
@@ -282,7 +288,7 @@ Done, Select all and Clear use the approved action-only flat styling via `.calen
 
 ## 0.3.0 (minor, additive)
 
-- Added the Unaccepted exclusive shortcut after Accepted, Maybe, and Declined, with local selection restoration and default fallback. This historical behavior is superseded by the independent toggle in 0.8.0.
+- Added the Unaccepted exclusive shortcut after Accepted, Maybe, and Declined, with local selection restoration and default fallback. The exclusive shortcut behavior returns in 0.12.0.
 - Adds an always-visible Unaccepted count badge, including zero, computed before RSVP filtering from the controller's selected-calendar ±30-day snapshot. Counts above 99 display `99+`, with the full count in the chip's `aria-label` and `title`.
 - Adds the `.calendar-rsvp-chip-badge` host styling hook. Public props and default RSVP statuses remain compatible.
 

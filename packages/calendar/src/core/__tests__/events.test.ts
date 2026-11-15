@@ -276,18 +276,22 @@ describe('filterByRsvp', () => {
     makeEvent({ id: 'declined-1', selfResponseStatus: 'declined' }),
   ];
 
-  it('defaults include pending alongside accepted and tentative without mutating the selection or events', () => {
-    const selection = new Set(DEFAULT_RSVP_STATUSES);
+  it('exports DEFAULT_RSVP_STATUSES as accepted and tentative', () => {
+    expect(DEFAULT_RSVP_STATUSES).toEqual(['accepted', 'tentative']);
+  });
+
+  it('filters explicit accepted and tentative membership without mutating the selection or events', () => {
+    const selection = new Set(['accepted', 'tentative']);
     const before = structuredClone(events);
     expect(filterByRsvp(events, selection).map((event) => event.id)).toEqual([
-      'accepted-1', 'tentative-1', 'needsAction-1',
+      'accepted-1', 'tentative-1',
     ]);
-    expect(selection).toEqual(new Set(['accepted', 'tentative', 'needsAction']));
+    expect(selection).toEqual(new Set(['accepted', 'tentative']));
     expect(events).toEqual(before);
   });
 
   it.each(['accepted', 'tentative', 'declined'] as const)(
-    'pending membership is independent of %s membership', (status) => {
+    'honors host-provided mixed pending and %s membership literally', (status) => {
       const mixed = new Set([status, 'needsAction']);
       expect(filterByRsvp(events, mixed).map((event) => event.id)).toEqual(
         status === 'declined' ? ['needsAction-1', 'declined-1'] : [`${status}-1`, 'needsAction-1'],

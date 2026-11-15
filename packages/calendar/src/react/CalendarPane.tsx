@@ -16,14 +16,30 @@ import { GroupedCalendarSelector } from './CalendarSelector.js';
 
 export type RsvpSelection = Set<RsvpStatus>;
 
-function toggleRsvpStatus(selection: Iterable<RsvpStatus>, status: RsvpStatus): RsvpSelection {
+function nextRsvpSelection(
+  selection: ReadonlySet<RsvpStatus>,
+  status: RsvpStatus,
+  saved: ReadonlySet<RsvpStatus> | null,
+): { next: RsvpSelection; saved: RsvpSelection | null } {
+  const isUnacceptedOnly = selection.size === 1 && selection.has('needsAction');
+  if (status === 'needsAction') {
+    if (isUnacceptedOnly) {
+      return { next: new Set(saved ?? DEFAULT_RSVP_STATUSES), saved: null };
+    }
+    if (!selection.has('needsAction')) {
+      return { next: new Set(['needsAction']), saved: new Set(selection) };
+    }
+  } else if (isUnacceptedOnly) {
+    return { next: new Set([status]), saved: null };
+  }
+
   const next = new Set(selection);
   if (next.has(status)) {
     next.delete(status);
   } else {
     next.add(status);
   }
-  return next.size === 0 ? new Set(DEFAULT_RSVP_STATUSES) : next;
+  return { next: next.size === 0 ? new Set(DEFAULT_RSVP_STATUSES) : next, saved: null };
 }
 
 function useWindowWidth(): number {
@@ -200,7 +216,14 @@ export function CalendarPane(props: CalendarPaneProps) {
   const popupRef = useRef<Window | null>(null);
   const anchorSnapshotRef = useRef<{ anchor: string; offsets: Map<string, number> } | null>(null);
   const didMountRsvpRef = useRef(false);
+  const savedRsvpRef = useRef<RsvpSelection | null>(null);
   const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (selectedRsvpStatuses.size !== 1 || !selectedRsvpStatuses.has('needsAction')) {
+      savedRsvpRef.current = null;
+    }
+  }, [selectedRsvpStatuses]);
 
   const unacceptedCount = useMemo(
     () => events.filter((event) => event.selfResponseStatus === 'needsAction').length,
@@ -279,7 +302,9 @@ export function CalendarPane(props: CalendarPaneProps) {
   }, [selectedRsvpStatuses]);
 
   function handleToggle(status: RsvpStatus) {
-    props.onRsvpStatusesChange(toggleRsvpStatus(selectedRsvpStatuses, status));
+    const selection = nextRsvpSelection(selectedRsvpStatuses, status, savedRsvpRef.current);
+    savedRsvpRef.current = selection.saved;
+    props.onRsvpStatusesChange(selection.next);
   }
   const dayGroups = groupByDay(filteredEvents, todayIso);
 
