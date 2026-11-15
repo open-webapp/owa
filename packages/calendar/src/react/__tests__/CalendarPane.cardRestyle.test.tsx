@@ -199,7 +199,7 @@ describe('CalendarPane RSVP bar card restyle', () => {
     });
   });
 
-  it('independently toggles every pressed chip and preserves host membership on remount', () => {
+  it('toggles ordinary chips, restores membership after exclusive Unaccepted, and uses defaults after remount', () => {
     const props = baseProps({ events: invitations });
     let saved: RsvpSelection = new Set(['accepted', 'tentative']);
     const onChange = vi.fn((next: RsvpSelection) => { saved = new Set(next); });
@@ -228,21 +228,21 @@ describe('CalendarPane RSVP bar card restyle', () => {
     expectPressed(true, false, true, false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Unaccepted (3)' }));
-    expectPressed(true, false, true, true);
-    expect(onChange).toHaveBeenLastCalledWith(new Set(['accepted', 'declined', 'needsAction']));
+    expectPressed(false, false, false, true);
+    expect(onChange).toHaveBeenLastCalledWith(new Set(['needsAction']));
     fireEvent.click(screen.getByRole('button', { name: 'Unaccepted (3)' }));
     expectPressed(true, false, true, false);
     expect(onChange).toHaveBeenLastCalledWith(new Set(['accepted', 'declined']));
     expect(saved).toEqual(new Set(['accepted', 'declined']));
     fireEvent.click(screen.getByRole('button', { name: 'Unaccepted (3)' }));
-    expectPressed(true, false, true, true);
-    expect(saved).toEqual(new Set(['accepted', 'declined', 'needsAction']));
+    expectPressed(false, false, false, true);
+    expect(saved).toEqual(new Set(['needsAction']));
 
     view.unmount();
     render(<Host />);
-    expectPressed(true, false, true, true);
+    expectPressed(false, false, false, true);
     fireEvent.click(screen.getByRole('button', { name: 'Unaccepted (3)' }));
-    expectPressed(true, false, true, false);
-    expect(onChange).toHaveBeenLastCalledWith(new Set(['accepted', 'declined']));
+    expectPressed(true, true, false, false);
+    expect(onChange).toHaveBeenLastCalledWith(new Set(['accepted', 'tentative']));
   });
 });

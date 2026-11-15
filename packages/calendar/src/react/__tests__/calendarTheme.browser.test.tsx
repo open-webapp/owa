@@ -809,7 +809,7 @@ for (const os of ['light', 'dark'] as const) {
     }
     mount(<Host theme="system" />);
     await click('#runtime-pane [aria-label="Unaccepted (1)"]');
-    expect(onRsvp).toHaveBeenLastCalledWith(new Set(['accepted', 'tentative', 'needsAction']));
+    expect(onRsvp).toHaveBeenLastCalledWith(new Set(['needsAction']));
     // Exercise the internal selector and then the standalone selector with the
     // same uninterrupted prop cycle; both must keep real focused DOM nodes.
     for (const scope of ['#runtime-pane', '#runtime-selector']) {
@@ -837,8 +837,8 @@ for (const os of ['light', 'dark'] as const) {
         actionPalette(dark);
         style('#runtime-pane .calendar-rsvp-chip.selected', { 'background-color': reference[dark ? 'dark' : 'light'].chip });
         expect(el('#runtime-pane [aria-label="Unaccepted (1)"]').getAttribute('aria-pressed')).toBe('true');
-        expect(el('#runtime-pane [aria-label="Accepted"]').getAttribute('aria-pressed')).toBe('true');
-        expect(el('#runtime-pane [aria-label="Maybe"]').getAttribute('aria-pressed')).toBe('true');
+        expect(el('#runtime-pane [aria-label="Accepted"]').getAttribute('aria-pressed')).toBe('false');
+        expect(el('#runtime-pane [aria-label="Maybe"]').getAttribute('aria-pressed')).toBe('false');
         expect(onRsvp).toHaveBeenCalledTimes(1);
         expect(onSelection).not.toHaveBeenCalled();
         expect(props.controller.setSelectedIds).not.toHaveBeenCalled();

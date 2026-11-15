@@ -2,7 +2,7 @@ import type { CalendarEvent, CalendarInfo, ParseContext, RsvpStatus } from './ty
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export const DEFAULT_RSVP_STATUSES: RsvpStatus[] = ['accepted', 'tentative', 'needsAction'];
+export const DEFAULT_RSVP_STATUSES: RsvpStatus[] = ['accepted', 'tentative'];
 
 /** Keeps stored calendar selections that still exist, defaulting to the primary calendar. */
 export function reconcileSelectedCalendarIds(

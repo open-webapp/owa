@@ -73,7 +73,7 @@ Initial: `ok` for every source.
 
 `CalendarPane` and `CalendarSelector` props as in README.
 
-- All four RSVP chips independently toggle current supplied membership. O is pressed iff needsAction is selected, including defaults/mixed sets; unanswered events follow membership within calendar/window filters. Defaults remain accepted/tentative/needsAction. Removing the last status returns defaults (O-only -> O leaves O pressed). Explicit empty host sets remain empty without normalization/callbacks on rerender. No previous RSVP selection is saved/restored. This breaking 0.8.0 contract supersedes the historical 0.3.0 exclusive shortcut.
+- Accepted, Maybe and Declined independently toggle current supplied membership. Unaccepted (O) is exclusive: selecting it enters O mode, and clearing it restores an internal non-persisted saved selection. Accepted, Maybe or Declined clicks exit O mode and update that independent membership. O is pressed iff needsAction is selected; unanswered events follow that membership within calendar/window filters. Defaults are accepted/tentative. Removing the last independent status returns those defaults. Explicit empty or other non-conforming host sets remain unnormalized, without callbacks on rerender.
 - Ribbon labels center in the actual intersection: top = max(ribbon top, viewport top, measured chip bottom, that day's header bottom); bottom = min(ribbon bottom, viewport bottom). Empty intersections have zero height. This covers empty Today before an event day and short ribbons, updating on scroll, resize, rendered-content and mounted theme changes.
 
 - Both accept `theme?: 'system' | 'light' | 'dark'`; omitted/`undefined` means `'system'`. System follows OS/browser color-scheme changes live; explicit modes ignore OS changes.

@@ -138,7 +138,7 @@ describe('CalendarPane theme prop', () => {
     }
     const { container, rerender } = render(<Host theme="dark" />);
     fireEvent.click(screen.getByRole('button', { name: 'Unaccepted (1)' }));
-    expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['accepted', 'tentative', 'needsAction']));
+    expect(onRsvpStatusesChange).toHaveBeenNthCalledWith(1, new Set(['needsAction']));
     const triggers = screen.getAllByRole('combobox');
     expect(triggers).toHaveLength(1);
     fireEvent.click(triggers[0]);
@@ -163,8 +163,8 @@ describe('CalendarPane theme prop', () => {
       expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', activeId);
       for (const option of screen.getAllByRole('option', { name: 'Work primary' })) expect(option).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('button', { name: 'Unaccepted (1)' })).toHaveAttribute('aria-pressed', 'true');
-      expect(screen.getByRole('button', { name: 'Accepted' })).toHaveAttribute('aria-pressed', 'true');
-      expect(screen.getByRole('button', { name: 'Maybe' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Accepted' })).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByRole('button', { name: 'Maybe' })).toHaveAttribute('aria-pressed', 'false');
       expect(screen.getByRole('link', { name: 'Pending invitation' })).toBeVisible();
       expect(onRsvpStatusesChange).toHaveBeenCalledTimes(1);
       expect(controller.setSelectedIds).not.toHaveBeenCalled();
