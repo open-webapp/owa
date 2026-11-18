@@ -530,7 +530,7 @@ describe('CalendarPane', () => {
     expect(screen.getAllByText('Release Calendar')).toHaveLength(1);
   });
 
-  it('uses composite calendar-event keys so duplicate event IDs render and open their own popup', () => {
+  it('uses composite calendar-event keys so duplicate event IDs render and open their own details', () => {
     act(() => setWidth(1200));
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const events = [
@@ -562,7 +562,12 @@ describe('CalendarPane', () => {
       expect(screen.getByText('Team Copy').closest('.calendar-event-row')).toHaveClass('calendar-event-row--selected');
 
       fireEvent.click(screen.getByRole('link', { name: 'Team Copy' }));
-      expect(window.open).toHaveBeenCalledWith('https://cal.test/team', 'notesdiary-cal-event', expect.any(String));
+      expect(within(screen.getByRole('dialog')).getByRole('heading', { name: 'Team Copy' })).toBeInTheDocument();
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('link', { name: 'Primary Copy' }));
+      expect(within(screen.getByRole('dialog')).getByRole('heading', { name: 'Primary Copy' })).toBeInTheDocument();
+      expect(window.open).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
       act(() => setWidth(1024));
@@ -1696,7 +1701,7 @@ describe('CalendarPane', () => {
     });
   });
 
-  describe('title popup', () => {
+  describe('event details overlay', () => {
     const evtA = makeEvent({ id: 'a', summary: 'Alpha', htmlLink: 'https://cal.test/a', joinUrl: 'https://meet.test/a' });
     const evtB = makeEvent({ id: 'b', summary: 'Beta', htmlLink: 'https://cal.test/b' });
     let popup: {
@@ -1715,11 +1720,143 @@ describe('CalendarPane', () => {
     afterEach(() => setWidth(1024));
 
     const title = (name: string) => screen.getByRole('link', { name });
+    const openLink = () => screen.getByRole('link', { name: 'Open in Google Calendar' });
 
-    it('desktop plain left click opens named popup, prevents default, focuses, nulls opener', () => {
+    it('plain click opens the dialog without a popup; Esc closes and returns focus to the title', () => {
       render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      const notPrevented = fireEvent.click(title('Alpha'));
-      expect(notPrevented).toBe(false);
+      const t = title('Alpha');
+      t.focus();
+      expect(fireEvent.click(t)).toBe(false);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(window.open).not.toHaveBeenCalled();
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(t).toHaveFocus();
+    });
+
+    it('close button and backdrop close and return focus to the title', () => {
+      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+      fireEvent.click(title('Alpha'));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(title('Alpha')).toHaveFocus();
+      fireEvent.click(title('Alpha'));
+      fireEvent.click(screen.getByRole('dialog').parentElement!);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(title('Alpha')).toHaveFocus();
+    });
+
+    it.each([
+      ['ctrl', { ctrlKey: true }],
+      ['meta', { metaKey: true }],
+      ['shift', { shiftKey: true }],
+      ['alt', { altKey: true }],
+      ['middle button', { button: 1 }],
+    ])('%s click is native: no overlay, not prevented', (_n, init) => {
+      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+      expect(fireEvent.click(title('Alpha'), init)).toBe(true);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(window.open).not.toHaveBeenCalled();
+    });
+
+    it('opens on a mobile viewport', () => {
+      setWidth(500);
+      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+      fireEvent.click(title('Alpha'));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(window.open).not.toHaveBeenCalled();
+    });
+
+    it('event without htmlLink renders a button title that opens details without Open link', () => {
+      render(<CalendarPane {...baseProps({ events: [makeEvent({ id: 'n', summary: 'NoLink', htmlLink: '' })] })} />);
+      fireEvent.click(screen.getByRole('button', { name: 'NoLink' }));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open in Google Calendar' })).not.toBeInTheDocument();
+    });
+
+    function liveProps(initial: CalendarEvent[]) {
+      const props = baseProps({ events: initial });
+      let current = initial;
+      const listeners = new Set<() => void>();
+      props.controller.getEvents = () => current;
+      props.controller.subscribe = (l: () => void) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      };
+      const setEvents = (next: CalendarEvent[]) => {
+        current = next;
+        act(() => listeners.forEach((l) => l()));
+      };
+      return { props, setEvents };
+    }
+
+    it('refresh with same key updates the overlay; vanished key keeps the last snapshot', () => {
+      const { props, setEvents } = liveProps([evtA]);
+      render(<CalendarPane {...props} />);
+      fireEvent.click(title('Alpha'));
+      setEvents([{ ...evtA, summary: 'Alpha v2' }]);
+      expect(within(screen.getByRole('dialog')).getByRole('heading', { name: 'Alpha v2' })).toBeInTheDocument();
+      setEvents([evtB]);
+      expect(within(screen.getByRole('dialog')).getByRole('heading', { name: 'Alpha v2' })).toBeInTheDocument();
+    });
+
+    it('RSVP chip toggle closes the overlay', () => {
+      function Stateful() {
+        const [sel, setSel] = useState<RsvpSelection>(new Set(DEFAULT_RSVP_STATUSES));
+        return <CalendarPane {...baseProps({ events: [evtA] })} selectedRsvpStatuses={sel} onRsvpStatusesChange={setSel} />;
+      }
+      render(<Stateful />);
+      fireEvent.click(title('Alpha'));
+      fireEvent.click(screen.getByRole('button', { name: 'Maybe' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('RSVP selection change from the parent closes the overlay', () => {
+      const props = baseProps({ events: [evtA] });
+      const view = render(<CalendarPane {...props} />);
+      fireEvent.click(title('Alpha'));
+      view.rerender(<CalendarPane {...props} selectedRsvpStatuses={new Set(['accepted'])} />);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('calendar selection change closes the overlay', () => {
+      const calendars: CalendarInfo[] = [
+        { id: 'primary', summary: 'Me', primary: true, backgroundColor: '#111111' },
+        { id: 'team', summary: 'Team', primary: false, backgroundColor: '#222222' },
+      ];
+      const props = baseProps({ events: [evtA], calendars, selectedCalendarIds: ['primary'] });
+      render(<CalendarPane {...props} />);
+      fireEvent.click(title('Alpha'));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      act(() => {
+        void props.controller.setSelectedIds('s1', ['primary', 'team']);
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('unmount removes the overlay', () => {
+      const view = render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+      fireEvent.click(title('Alpha'));
+      view.unmount();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('renderEventAction stays on the row and is not in the overlay', () => {
+      const props = {
+        ...baseProps({ events: [evtA] }),
+        renderEventAction: () => <button type="button">row-action</button>,
+      };
+      render(<CalendarPane {...props} />);
+      fireEvent.click(title('Alpha'));
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).queryByRole('button', { name: 'row-action' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'row-action' })).toBeInTheDocument();
+    });
+
+    it('Open in Google Calendar uses the named popup, focuses it and nulls opener', () => {
+      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+      fireEvent.click(title('Alpha'));
+      expect(fireEvent.click(openLink())).toBe(false);
       expect(window.open).toHaveBeenCalledTimes(1);
       const [url, name, features] = (window.open as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(url).toBe('https://cal.test/a');
@@ -1727,43 +1864,32 @@ describe('CalendarPane', () => {
       expect(features).toContain('popup');
       expect(features).toContain('width=560');
       expect(features).toContain('height=760');
-      expect(features).toContain('left=');
-      expect(features).toContain('top=');
       expect(popup.focus).toHaveBeenCalledTimes(1);
       expect(popup.opener).toBeNull();
     });
 
     it('centers over app window, rounds, clamps to >= 0', () => {
-      let view = render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      setWin({ screenX: 100, screenY: 50, outerWidth: 1400, outerHeight: 900 });
-      fireEvent.click(title('Alpha'));
-      let features = (window.open as ReturnType<typeof vi.fn>).mock.calls[0][2];
-      expect(features).toContain('left=520');
-      expect(features).toContain('top=120');
-
-      view.unmount();
-      view = render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      setWin({ screenX: 100, screenY: 50, outerWidth: 1401, outerHeight: 900 });
-      fireEvent.click(title('Alpha'));
-      features = (window.open as ReturnType<typeof vi.fn>).mock.calls[1][2];
-      expect(features).toMatch(/left=\d+(,|$)/);
-
-      view.unmount();
-      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      setWin({ screenX: 0, screenY: 0, outerWidth: 400, outerHeight: 300 });
-      fireEvent.click(title('Alpha'));
-      features = (window.open as ReturnType<typeof vi.fn>).mock.calls[2][2];
-      expect(features).toContain('left=0');
-      expect(features).toContain('top=0');
+      const open = (w: Record<string, number>) => {
+        const v = render(<CalendarPane {...baseProps({ events: [evtA] })} />);
+        setWin(w);
+        fireEvent.click(title('Alpha'));
+        fireEvent.click(openLink());
+        v.unmount();
+      };
+      const calls = (window.open as ReturnType<typeof vi.fn>).mock.calls;
+      open({ screenX: 100, screenY: 50, outerWidth: 1400, outerHeight: 900 });
+      expect(calls[0][2]).toContain('left=520');
+      expect(calls[0][2]).toContain('top=120');
+      open({ screenX: 100, screenY: 50, outerWidth: 1401, outerHeight: 900 });
+      expect(calls[1][2]).toMatch(/left=\d+(,|$)/);
+      open({ screenX: 0, screenY: 0, outerWidth: 400, outerHeight: 300 });
+      expect(calls[2][2]).toContain('left=0');
+      expect(calls[2][2]).toContain('top=0');
     });
 
     it('navigates and focuses the existing popup for different events', () => {
       let navigatedUrl = '';
-      const existingPopup = {
-        closed: false,
-        focus: vi.fn(),
-        opener: {},
-      };
+      const existingPopup = { closed: false, focus: vi.fn(), opener: {} };
       Object.defineProperty(existingPopup, 'location', {
         set(url: string) {
           navigatedUrl = url;
@@ -1775,7 +1901,10 @@ describe('CalendarPane', () => {
       (window.open as ReturnType<typeof vi.fn>).mockReturnValue(existingPopup);
       render(<CalendarPane {...baseProps({ events: [evtA, evtB] })} />);
       fireEvent.click(title('Alpha'));
+      fireEvent.click(openLink());
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       fireEvent.click(title('Beta'));
+      fireEvent.click(openLink());
       const calls = (window.open as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls[0][0]).toBe('https://cal.test/a');
       expect(calls[0][1]).toBe(POPUP_NAME);
@@ -1785,20 +1914,18 @@ describe('CalendarPane', () => {
     });
 
     it('opens a replacement popup after the existing one closes', () => {
-      const existingPopup = {
-        closed: false,
-        location: { href: 'https://cal.test/a' },
-        focus: vi.fn(),
-        opener: {},
-      };
+      const existingPopup = { closed: false, location: { href: 'https://cal.test/a' }, focus: vi.fn(), opener: {} };
       const replacementPopup = { focus: vi.fn(), opener: {} };
       (window.open as ReturnType<typeof vi.fn>)
         .mockReturnValueOnce(existingPopup)
         .mockReturnValue(replacementPopup);
       render(<CalendarPane {...baseProps({ events: [evtA, evtB] })} />);
       fireEvent.click(title('Alpha'));
+      fireEvent.click(openLink());
       existingPopup.closed = true;
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       fireEvent.click(title('Beta'));
+      fireEvent.click(openLink());
 
       expect(window.open).toHaveBeenCalledTimes(2);
       expect((window.open as ReturnType<typeof vi.fn>).mock.calls[1][0]).toBe('https://cal.test/b');
@@ -1808,7 +1935,8 @@ describe('CalendarPane', () => {
     it('falls back to _blank when popup blocked', () => {
       (window.open as ReturnType<typeof vi.fn>).mockReturnValue(null);
       render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      expect(() => fireEvent.click(title('Alpha'))).not.toThrow();
+      fireEvent.click(title('Alpha'));
+      expect(() => fireEvent.click(openLink())).not.toThrow();
       const calls = (window.open as ReturnType<typeof vi.fn>).mock.calls;
       expect(calls).toHaveLength(2);
       expect(calls[1]).toEqual(['https://cal.test/a', '_blank']);
@@ -1826,32 +1954,9 @@ describe('CalendarPane', () => {
       };
       (window.open as ReturnType<typeof vi.fn>).mockReturnValue(p);
       render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      expect(() => fireEvent.click(title('Alpha'))).not.toThrow();
+      fireEvent.click(title('Alpha'));
+      expect(() => fireEvent.click(openLink())).not.toThrow();
       expect(p.focus).toHaveBeenCalledTimes(1);
-    });
-
-    it('breakpoint: 960 popup; 959 and 500 native', () => {
-      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      act(() => setWidth(960));
-      expect(fireEvent.click(title('Alpha'))).toBe(false);
-      expect(window.open).toHaveBeenCalledTimes(1);
-      for (const w of [959, 500]) {
-        act(() => setWidth(w));
-        expect(fireEvent.click(title('Alpha'))).toBe(true);
-      }
-      expect(window.open).toHaveBeenCalledTimes(1);
-    });
-
-    it.each([
-      ['ctrl', { ctrlKey: true }],
-      ['meta', { metaKey: true }],
-      ['shift', { shiftKey: true }],
-      ['alt', { altKey: true }],
-      ['middle button', { button: 1 }],
-    ])('%s click on desktop is native', (_n, init) => {
-      render(<CalendarPane {...baseProps({ events: [evtA] })} />);
-      expect(fireEvent.click(title('Alpha'), init)).toBe(true);
-      expect(window.open).not.toHaveBeenCalled();
     });
 
     it('Join click does not open popup and keeps own href/target', () => {
@@ -1872,10 +1977,48 @@ describe('CalendarPane', () => {
       expect(a.getAttribute('rel')).toContain('noreferrer');
     });
 
-    it('all-day event renders no title anchor', () => {
-      const allDay = makeEvent({ id: 'ad', summary: 'AllDay', isAllDay: true, start: { date: '2026-09-27' }, end: { date: '2026-09-28' } });
-      render(<CalendarPane {...baseProps({ events: [allDay] })} />);
-      expect(screen.queryByRole('link', { name: 'AllDay' })).not.toBeInTheDocument();
+    it('all-day event title is an overlay trigger (link when htmlLink, button otherwise), never a plain span', () => {
+      const ad = (id: string, htmlLink: string) => makeEvent({ id, summary: 'AllDay' + id, htmlLink, isAllDay: true, start: { date: '2026-09-27' }, end: { date: '2026-09-28' } });
+      render(<CalendarPane {...baseProps({ events: [ad('L', 'https://cal.test/l'), ad('N', '')] })} />);
+      expect(screen.getByRole('link', { name: 'AllDayL' })).toHaveAttribute('href', 'https://cal.test/l');
+      expect(screen.getByRole('button', { name: 'AllDayN' })).toBeInTheDocument();
+    });
+
+    it('all-day title click opens dialog with date and no time; focus returns on close', () => {
+      const a = makeEvent({ id: 'ad', summary: 'AllDay', htmlLink: 'https://cal.test/ad', isAllDay: true, start: { date: '2026-09-27' }, end: { date: '2026-09-28' } });
+      render(<CalendarPane {...baseProps({ events: [a] })} />);
+      const t = screen.getByRole('link', { name: 'AllDay' });
+      t.focus();
+      expect(fireEvent.click(t)).toBe(false);
+      const dlg = screen.getByRole('dialog');
+      expect(within(dlg).getByRole('heading', { name: 'AllDay' })).toBeInTheDocument();
+      expect(dlg.textContent).toMatch(/27/);
+      expect(dlg.textContent).not.toMatch(/\d:\d\d|[AP]M/);
+      fireEvent.keyDown(dlg, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(t).toHaveFocus();
+    });
+
+    it('all-day button title opens dialog and restores focus', () => {
+      const a = makeEvent({ id: 'adn', summary: 'AllDayN', htmlLink: '', isAllDay: true, start: { date: '2026-09-27' }, end: { date: '2026-09-28' } });
+      render(<CalendarPane {...baseProps({ events: [a] })} />);
+      const t = screen.getByRole('button', { name: 'AllDayN' });
+      fireEvent.click(t);
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(t).toHaveFocus();
+    });
+
+    it.each([
+      ['ctrl', { ctrlKey: true }],
+      ['meta', { metaKey: true }],
+      ['shift', { shiftKey: true }],
+      ['alt', { altKey: true }],
+      ['middle button', { button: 1 }],
+    ])('all-day %s click on link title is native', (_n, init) => {
+      const a = makeEvent({ id: 'ad', summary: 'AllDay', htmlLink: 'https://cal.test/ad', isAllDay: true, start: { date: '2026-09-27' }, end: { date: '2026-09-28' } });
+      render(<CalendarPane {...baseProps({ events: [a] })} />);
+      expect(fireEvent.click(screen.getByRole('link', { name: 'AllDay' }), init)).toBe(true);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
   describe('insert link icon', () => {
@@ -1996,7 +2139,7 @@ describe('CalendarPane', () => {
       expect(screen.getByText('Timed Talk')).toBeInTheDocument();
     });
 
-    it('timed title keeps link attrs and popup; clicking it does not insert; Join unchanged; all-day title is text', () => {
+    it('timed title keeps link attrs and opens details; clicking it does not insert; Join unchanged; all-day title is text', () => {
       const popup = { focus: vi.fn(), opener: {} };
       (window.open as ReturnType<typeof vi.fn>).mockReturnValue(popup);
       const onInsert = vi.fn();
@@ -2006,16 +2149,20 @@ describe('CalendarPane', () => {
       expect(a).toHaveAttribute('target', '_blank');
       expect(a.getAttribute('rel')).toContain('noopener');
       fireEvent.click(a);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(window.open).not.toHaveBeenCalled();
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'Open in Google Calendar' }));
       expect(window.open).toHaveBeenCalledTimes(1);
       expect((window.open as ReturnType<typeof vi.fn>).mock.calls[0][1]).toBe(POPUP_NAME);
       expect(onInsert).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       const join = screen.getByRole('link', { name: /^join$/i });
       expect(join).toHaveAttribute('href', 'https://meet.test/t');
       expect(join).toHaveAttribute('target', '_blank');
       fireEvent.click(join);
       expect(window.open).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole('link', { name: 'Offsite Day' })).not.toBeInTheDocument();
-      expect(screen.getByText('Offsite Day')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Offsite Day' })).toHaveAttribute('href', 'https://cal.test/d');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
 

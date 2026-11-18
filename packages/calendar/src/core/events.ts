@@ -1,4 +1,4 @@
-import type { CalendarEvent, CalendarInfo, ParseContext, RsvpStatus } from './types.js';
+import type { CalendarEvent, CalendarEventAttendee, CalendarInfo, ParseContext, RsvpStatus } from './types.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -214,7 +214,7 @@ interface RawEvent {
   summary?: string;
   start?: CalendarEvent['start'];
   end?: CalendarEvent['end'];
-  attendees?: { self?: boolean; responseStatus?: string }[];
+  attendees?: { email?: string; displayName?: string; self?: boolean; organizer?: boolean; responseStatus?: string }[];
   organizer?: { displayName?: string; email?: string; self?: boolean };
   htmlLink?: string;
   hangoutLink?: string;
@@ -245,6 +245,23 @@ export function extractJoinUrl(raw: RawEvent): string | null {
   return desc ? desc[0] : null;
 }
 
+function parseAttendees(raw: unknown): CalendarEventAttendee[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .filter((a) => a && typeof a === 'object')
+    .map((a) => ({
+      email: typeof a.email === 'string' ? a.email : '',
+      displayName: typeof a.displayName === 'string' ? a.displayName : undefined,
+      responseStatus:
+        a.responseStatus === 'accepted' || a.responseStatus === 'tentative' ||
+        a.responseStatus === 'declined' || a.responseStatus === 'needsAction'
+          ? (a.responseStatus as RsvpStatus)
+          : ('needsAction' as RsvpStatus),
+      self: typeof a.self === 'boolean' ? a.self : undefined,
+      organizer: typeof a.organizer === 'boolean' ? a.organizer : undefined,
+    }));
+}
+
 /** Parses a raw Google Calendar event. Returns null for cancelled/malformed input; never throws. */
 export function parseEvent(raw: RawEvent, ctx: ParseContext): CalendarEvent | null {
   try {
@@ -269,6 +286,9 @@ export function parseEvent(raw: RawEvent, ctx: ParseContext): CalendarEvent | nu
         self: Boolean(raw.organizer?.self),
       },
       htmlLink: raw.htmlLink ?? '',
+      location: typeof raw.location === 'string' ? raw.location : undefined,
+      description: typeof raw.description === 'string' ? raw.description : undefined,
+      attendees: parseAttendees(raw.attendees),
     };
   } catch {
     return null;
