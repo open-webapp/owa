@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.13.0 is BREAKING.** Clicking an event title now opens an in-pane event details overlay instead of a popup window. See [0.13.0](#0130-breaking-pre-10-minor).
+>
 > **0.12.0 is BREAKING.** See [0.12.0](#0120-breaking-pre-10-minor) for exclusive Unaccepted filtering and new RSVP defaults.
 >
 > **0.10.0 is BREAKING.** See [0.10.0](#0100-breaking-pre-10-minor) for the approved CalendarPane selector-popup geometry correction.
@@ -160,7 +162,18 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `emptyState?` | `ReactNode` | replaces the built-in not-connected block |
 | `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
 | `onClose?` | `() => void` | |
-| `popupName?` | `string` | `window.open` name for the event popup (default `notesdiary-cal-event`) |
+| `popupName?` | `string` | `window.open` name for the event popup window (default `notesdiary-cal-event`). The popup now opens only from the overlay's "Open in Google Calendar" link |
+
+#### Event details overlay
+
+A plain left click on an event title opens a bottom-sheet overlay inside the pane (`role="dialog"`, `aria-modal="true"`). It shows the time, calendar, organizer, Join and RSVP controls, location, a plain-text description, and attendees (the first 10, then "+N more"). It also has an "Open in Google Calendar" link.
+
+- Close with Escape, the close (X) button, or a click on the backdrop. Focus is trapped inside the sheet while it is open and returns to the title that opened it when it closes.
+- Modified clicks (ctrl, cmd, shift, alt, or middle click) keep the native new-tab behavior of the title link.
+- Events without an `htmlLink` still open the overlay. The "Open in Google Calendar" link is hidden for them.
+- There is no prop to opt out. Hosts that relied on the title click opening a popup window must use the overlay's link or handle the click themselves.
+
+`CalendarEvent` gains optional fields used by the overlay: `location?: string`, `description?: string` (HTML is converted to plain text for display), and `attendees?: CalendarEventAttendee[]`, where `CalendarEventAttendee` is `{ email: string; displayName?: string; responseStatus: RsvpStatus; self?: boolean; organizer?: boolean }`. Missing fields are simply not shown.
 
 #### RSVP chips
 
@@ -231,9 +244,20 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
+Event details overlay (0.13.0): `.calendar-event-details` is the full-pane backdrop (absolutely positioned inside the pane root, dimmed, bottom-aligned) and `.calendar-event-details-sheet` is the bottom sheet (max 80% of the pane height, scrolls internally). Both use the pane's palette tokens, so they follow the pane's `theme`. Inner hooks: `-grabber`, `-header`, `-dot`, `-title`, `-close`, `-body`, `-when`, `-calendar`, and related `calendar-event-details-*` section classes. The overlay is positioned against the nearest positioned ancestor, so the pane root must stay positioned.
+
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.13.0 (BREAKING pre-1.0 minor)
+
+- Plain left click on an event title opens an in-pane event details overlay (bottom sheet, `role="dialog"`, `aria-modal`) instead of the event popup window. It closes with Escape, the X button or the backdrop, traps focus while open and returns focus to the title on close.
+- The overlay shows time, calendar, organizer, Join and RSVP, location, plain-text description, and attendees (max 10, then "+N more"), with an "Open in Google Calendar" link.
+- The `popupName` popup window now opens only from that link. Modified clicks (ctrl/cmd/shift/alt/middle) keep the native new-tab behavior. Events without `htmlLink` open the overlay too.
+- `CalendarEvent` gains optional `location`, `description` and `attendees` (`CalendarEventAttendee[]`). Existing rows without them still read.
+- New host CSS hooks: `.calendar-event-details` and `.calendar-event-details-sheet`.
+- Breaking for hosts relying on the title click opening a popup. There is no opt-out prop. No storage migration is required.
 
 ## 0.12.0 (BREAKING pre-1.0 minor)
 

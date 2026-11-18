@@ -13,6 +13,7 @@ import {
   DEFAULT_RSVP_STATUSES,
 } from '../core/events.js';
 import { GroupedCalendarSelector } from './CalendarSelector.js';
+import { EventDetails } from './EventDetails.js';
 
 export type RsvpSelection = Set<RsvpStatus>;
 
@@ -42,16 +43,6 @@ function nextRsvpSelection(
   return { next: next.size === 0 ? new Set(DEFAULT_RSVP_STATUSES) : next, saved: null };
 }
 
-function useWindowWidth(): number {
-  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-  return width;
-}
-
 const SOURCE_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#a142f4', '#00acc1', '#ff7043', '#8d6e63'];
 
 export interface CalendarPaneProps {
@@ -74,7 +65,7 @@ export interface CalendarPaneProps {
   popupName?: string;
 }
 
-const RSVP_CHIPS: { status: RsvpStatus; label: string; path: string }[] = [
+export const RSVP_CHIPS: { status: RsvpStatus; label: string; path: string }[] = [
   {
     status: 'accepted',
     label: 'Accepted',
@@ -97,7 +88,7 @@ const RSVP_CHIPS: { status: RsvpStatus; label: string; path: string }[] = [
   },
 ];
 
-function RsvpGlyph({ path, size = 16, strokeWidth = 2.2 }: { path: string; size?: number; strokeWidth?: number }) {
+export function RsvpGlyph({ path, size = 16, strokeWidth = 2.2 }: { path: string; size?: number; strokeWidth?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
       <path d={path} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
@@ -181,7 +172,6 @@ function usableUrl(url: string | null | undefined): string | null {
 }
 
 export function CalendarPane(props: CalendarPaneProps) {
-  const isDesktop = useWindowWidth() >= 960;
   const { sources, controller, selectedRsvpStatuses, theme = 'system' } = props;
   const popupName = props.popupName ?? DEFAULT_POPUP_NAME;
   const [version, setVersion] = useState(0);
@@ -218,6 +208,65 @@ export function CalendarPane(props: CalendarPaneProps) {
   const didMountRsvpRef = useRef(false);
   const savedRsvpRef = useRef<RsvpSelection | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [detail, setDetail] = useState<{ snapshot: CalendarEvent; trigger: HTMLElement } | null>(null);
+  const detailKey = detail ? getCalendarEventKey(detail.snapshot) : null;
+
+  function closeDetail(returnFocus: boolean) {
+    const trigger = detail?.trigger;
+    setDetail(null);
+    if (returnFocus && trigger) trigger.focus();
+  }
+
+  // Refresh with the same key updates the snapshot; a vanished key keeps the last snapshot.
+  useEffect(() => {
+    if (detailKey === null) return;
+    const fresh = events.find((e) => getCalendarEventKey(e) === detailKey);
+    if (fresh) setDetail((d) => (d && d.snapshot !== fresh ? { ...d, snapshot: fresh } : d));
+  }, [events, detailKey]);
+
+  const selectionSignature = sources
+    .map((s) => `${s.id}:${[...controller.getSelectedIds(s.id)].sort().join(',')}`)
+    .join('|');
+  const rsvpSignature = [...selectedRsvpStatuses].sort().join(',');
+  const didMountFilterRef = useRef(false);
+  useEffect(() => {
+    if (!didMountFilterRef.current) {
+      didMountFilterRef.current = true;
+      return;
+    }
+    setDetail(null);
+  }, [selectionSignature, rsvpSignature]);
+
+  function renderTitle(event: CalendarEvent) {
+    const titleSpan = <span className="calendar-event-title">{event.summary}</span>;
+    if (usableUrl(event.htmlLink) !== null) {
+      return (
+        <a
+          className="calendar-event-title-link"
+          href={event.htmlLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+              e.preventDefault();
+              openDetail(e, event);
+            }
+          }}
+        >
+          {titleSpan}
+        </a>
+      );
+    }
+    return (
+      <button type="button" className="calendar-event-title-link" onClick={(e) => openDetail(e, event)}>
+        {titleSpan}
+      </button>
+    );
+  }
+
+  function openDetail(e: { currentTarget: HTMLElement }, event: CalendarEvent) {
+    setDetail({ snapshot: event, trigger: e.currentTarget });
+  }
 
   useEffect(() => {
     if (selectedRsvpStatuses.size !== 1 || !selectedRsvpStatuses.has('needsAction')) {
@@ -598,7 +647,7 @@ export function CalendarPane(props: CalendarPaneProps) {
                         <RsvpStatusIcon status={event.selfResponseStatus} />
                       </div>
                       <span className="calendar-event-title-wrap">
-                        <span className="calendar-event-title">{event.summary}</span>
+                        {renderTitle(event)}
                         {props.renderEventAction?.(event)}
                       </span>
                       {showCalendarLabel && (
@@ -622,7 +671,6 @@ export function CalendarPane(props: CalendarPaneProps) {
                   );
                 }
 
-                const hasLink = usableUrl(event.htmlLink) !== null;
                 return (
                   <div
                      key={eventKey}
@@ -657,31 +705,7 @@ export function CalendarPane(props: CalendarPaneProps) {
                       </div>
                     </div>
                     <div className="calendar-event-title-wrap">
-                      {hasLink ? (
-                      <a
-                        className="calendar-event-title-link"
-                        href={event.htmlLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          if (
-                            isDesktop &&
-                            e.button === 0 &&
-                            !e.ctrlKey &&
-                            !e.metaKey &&
-                            !e.shiftKey &&
-                            !e.altKey
-                          ) {
-                            e.preventDefault();
-                            openEventPopup(event.htmlLink, popupRef, popupName);
-                          }
-                        }}
-                      >
-                        <span className="calendar-event-title">{event.summary}</span>
-                      </a>
-                      ) : (
-                        <span className="calendar-event-title">{event.summary}</span>
-                      )}
+                      {renderTitle(event)}
                       {props.renderEventAction?.(event)}
                     </div>
                     {showCalendarLabel && (
@@ -726,6 +750,15 @@ export function CalendarPane(props: CalendarPaneProps) {
               heading: multi ? s.email : undefined,
           }))} />
         </footer>
+      )}
+      {detail && (
+        <EventDetails
+          event={detail.snapshot}
+          calendar={calendarsByKey.get(`${detail.snapshot.sourceId}\u0000${detail.snapshot.calendarId}`)}
+          sourceLabel={multi ? sourceEmail(detail.snapshot.sourceId) : ''}
+          onClose={() => closeDetail(true)}
+          onOpenLink={(url) => openEventPopup(url, popupRef, popupName)}
+        />
       )}
     </div>
   );

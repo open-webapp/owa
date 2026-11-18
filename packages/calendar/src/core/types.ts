@@ -28,6 +28,17 @@ export interface CalendarEvent {
   joinUrl: string | null;
   organizer: { displayName?: string; email?: string; self: boolean };
   htmlLink: string;
+  location?: string;
+  description?: string;
+  attendees?: CalendarEventAttendee[];
+}
+
+export interface CalendarEventAttendee {
+  email: string;
+  displayName?: string;
+  responseStatus: RsvpStatus;
+  self?: boolean;
+  organizer?: boolean;
 }
 
 export interface CalendarInfo {

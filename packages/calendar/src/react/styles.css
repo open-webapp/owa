@@ -86,6 +86,7 @@
 }
 
 .calendar-pane {
+  position: relative;
   --calendar-footer-height: 64px;
   display: flex;
   flex-direction: column;
@@ -842,4 +843,79 @@
   font-weight: 600;
   opacity: 0.7;
   overflow-wrap: anywhere;
+}
+
+/* Event details overlay: confined to the pane, bottom sheet. */
+.calendar-event-details {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 45%);
+}
+
+.calendar-event-details-sheet {
+  box-sizing: border-box;
+  max-height: 80%;
+  overflow-y: auto;
+  padding: 8px 16px 16px;
+  background: var(--calendar-surface);
+  color: var(--calendar-text);
+  border-top: 1px solid var(--calendar-border);
+  border-radius: 14px 14px 0 0;
+  animation: calendar-event-details-slide 0.2s ease-out;
+}
+
+.calendar-event-details-grabber {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 8px;
+  border-radius: 2px;
+  background: var(--calendar-border);
+}
+
+.calendar-event-details-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-event-details-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.calendar-event-details-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.05em;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-details-close {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-event-details-body > section {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+@keyframes calendar-event-details-slide {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-event-details-sheet { animation: none; }
 }
