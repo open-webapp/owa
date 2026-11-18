@@ -28,12 +28,12 @@ function setup(overrides = {}, props = {}) {
 }
 
 describe('EventDetails', () => {
-  it('renders sections in order with Join attrs and open link', async () => {
-    const { onOpenLink, container } = setup();
+  it('renders top row, title, organizer, calendar line, location, description in order', async () => {
+    const { onOpenLink, container } = setup({ start: { dateTime: '2026-03-02T09:00:00-08:00' }, end: { dateTime: '2026-03-02T09:30:00-08:00' } });
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     const text = dialog.textContent ?? '';
-    const order = ['Planning', 'Work', 'me@example.com', 'Olive', 'Join', 'Accepted', 'Room 4', 'Agenda', 'Ann'];
+    const order = ['9:00', 'Join', 'Accepted', 'Planning', 'Organizer', 'Olive', 'Work', 'me@example.com', 'Room 4', 'Agenda'];
     let last = -1;
     for (const s of order) {
       const i = text.indexOf(s, last + 1);
@@ -48,22 +48,121 @@ describe('EventDetails', () => {
     expect(onOpenLink).toHaveBeenCalledWith('https://calendar.google.com/event?eid=evt-1');
   });
 
+  it('shows All day, omits Join/location, tags organizer (you)', () => {
+    setup({ isAllDay: true, joinUrl: undefined, location: undefined, organizer: { displayName: 'Olive', self: true } });
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('All day');
+    expect(screen.queryByRole('link', { name: 'Join' })).toBeNull();
+    expect(screen.queryByText('Room 4')).toBeNull();
+    expect(dialog.querySelector('.calendar-event-details-organizer')?.textContent).toContain('(you)');
+  });
+
+  it('top-row status is neither radio nor button', () => {
+    setup();
+    const status = screen.getByText('Accepted', { selector: '.calendar-event-details-toprow *' });
+    expect(status.closest('[role="radio"],button')).toBeNull();
+  });
+
   it('omits absent sections', () => {
     setup({ htmlLink: '', location: undefined, description: undefined, attendees: undefined });
     expect(screen.queryByRole('link', { name: /open in google calendar/i })).toBeNull();
     expect(screen.queryByText('Room 4')).toBeNull();
-    expect(screen.queryByText(/more/)).toBeNull();
-    expect(screen.queryByText('Ann')).toBeNull();
+    expect(screen.queryByText(/Invitees/)).toBeNull();
   });
 
-  it('caps attendees at 10', () => {
+  const four = [
+    { email: 'me@x.com', displayName: 'Me', responseStatus: 'accepted', self: true },
+    { email: 'o@x.com', displayName: 'Olive', responseStatus: 'accepted', organizer: true },
+    { email: 'b@x.com', displayName: 'Bob', responseStatus: 'tentative' },
+    { email: 'c@x.com', responseStatus: 'needsAction' },
+  ];
+
+  it('renders Invitees heading, summary, organizer first, (you) tag, email fallback', () => {
+    setup({ attendees: four });
+    expect(screen.getByText('Invitees (4)')).toBeInTheDocument();
+    expect(screen.getByText('2 yes · 1 maybe · 1 awaiting')).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    expect(items[0].textContent).toContain('Olive');
+    expect(items[0].textContent).toContain('Organizer');
+    expect(items[1].textContent).toContain('(you)');
+    expect(screen.getByText('c@x.com')).toBeInTheDocument();
+  });
+
+  it('caps invitees at 10 with Show all toggle', async () => {
     const attendees = Array.from({ length: 12 }, (_, i) => ({
-      email: `p${i}@x.com`, displayName: `Person${i}`, responseStatus: 'accepted' as const,
+      email: `p${i}@x.com`, displayName: `Person${String(i).padStart(2, '0')}`, responseStatus: 'accepted' as const,
     }));
     setup({ attendees });
-    expect(screen.getByText('Person9')).toBeInTheDocument();
-    expect(screen.queryByText('Person10')).toBeNull();
-    expect(screen.getByText('+2 more')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(10);
+    expect(screen.queryByText(/more/)).toBeNull();
+    const btn = screen.getByRole('button', { name: 'Show all 12' });
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(btn);
+    expect(screen.getAllByRole('listitem')).toHaveLength(12);
+  });
+
+  it('hides Invitees for only-self, keeps Organizer; shows for not invited', () => {
+    const { unmount } = setup({ attendees: [{ email: 'me@x.com', responseStatus: 'accepted', self: true }] });
+    expect(screen.queryByText(/Invitees/)).toBeNull();
+    expect(screen.getByText('Olive')).toBeInTheDocument();
+    unmount();
+    setup({ attendees: four.slice(1) });
+    expect(screen.getByText('Invitees (3)')).toBeInTheDocument();
+  });
+
+  describe('Change RSVP', () => {
+    it('click Maybe calls handler once; current is checked', async () => {
+      const onRsvpChange = vi.fn();
+      setup({ attendees: four }, { onRsvpChange });
+      expect(screen.getByRole('radiogroup', { name: 'Change RSVP' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Yes' })).toHaveAttribute('aria-checked', 'true');
+      await userEvent.click(screen.getByRole('radio', { name: 'Maybe' }));
+      expect(onRsvpChange).toHaveBeenCalledTimes(1);
+      expect(onRsvpChange.mock.calls[0][1]).toBe('tentative');
+      expect(screen.queryByRole('radio', { name: /unaccepted|awaiting/i })).toBeNull();
+    });
+
+    it('pending disables radios and shows live text', async () => {
+      const onRsvpChange = vi.fn();
+      setup({ attendees: four }, { onRsvpChange, pending: true });
+      screen.getAllByRole('radio').forEach((r) => expect(r).toBeDisabled());
+      expect(screen.getByText('Updating RSVP...')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('radio', { name: 'No' }));
+      expect(onRsvpChange).not.toHaveBeenCalled();
+    });
+
+    it('hidden without handler or when not invited', () => {
+      const { unmount } = setup({ attendees: four });
+      expect(screen.queryByRole('radiogroup')).toBeNull();
+      unmount();
+      setup({ attendees: four.slice(1) }, { onRsvpChange: vi.fn() });
+      expect(screen.queryByRole('radiogroup')).toBeNull();
+    });
+
+    it('arrows move focus; Esc closes', async () => {
+      const { onClose } = setup({ attendees: four }, { onRsvpChange: vi.fn() });
+      screen.getByRole('radio', { name: 'Yes' }).focus();
+      await userEvent.keyboard('{ArrowRight}');
+      expect(screen.getByRole('radio', { name: 'Maybe' })).toHaveFocus();
+      await userEvent.keyboard('{ArrowLeft}');
+      expect(screen.getByRole('radio', { name: 'Yes' })).toHaveFocus();
+      await userEvent.keyboard('{Escape}');
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('error shows exact text; Retry re-runs last status', async () => {
+      const onRsvpChange = vi.fn();
+      const { rerender, onClose, onOpenLink } = setup({ attendees: four }, { onRsvpChange });
+      await userEvent.click(screen.getByRole('radio', { name: 'No' }));
+      const event = onRsvpChange.mock.calls[0][0];
+      rerender(
+        <EventDetails event={event} calendar={CAL} sourceLabel="me@example.com" onClose={onClose} onOpenLink={onOpenLink} onRsvpChange={onRsvpChange} error />,
+      );
+      expect(screen.getByText(/Couldn't update RSVP\./).parentElement?.textContent).toBe("Couldn't update RSVP. Retry");
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(onRsvpChange).toHaveBeenCalledTimes(2);
+      expect(onRsvpChange.mock.calls[1][1]).toBe('declined');
+    });
   });
 
   it('closes on Esc, backdrop, X but not sheet click', async () => {

@@ -1992,7 +1992,7 @@ describe('CalendarPane', () => {
       expect(fireEvent.click(t)).toBe(false);
       const dlg = screen.getByRole('dialog');
       expect(within(dlg).getByRole('heading', { name: 'AllDay' })).toBeInTheDocument();
-      expect(dlg.textContent).toMatch(/27/);
+      expect(dlg.textContent).toMatch(/All day/);
       expect(dlg.textContent).not.toMatch(/\d:\d\d|[AP]M/);
       fireEvent.keyDown(dlg, { key: 'Escape' });
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

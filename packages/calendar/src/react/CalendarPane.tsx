@@ -63,7 +63,14 @@ export interface CalendarPaneProps {
   onReconnect?: () => void;
   /** Window name used for the event popup. */
   popupName?: string;
+  /**
+   * Optional host-provided RSVP writer. When present, the event details overlay shows a
+   * "Change RSVP" row. The package never writes to Google itself; the host performs the write.
+   */
+  onRsvpChange?: (event: CalendarEvent, status: RsvpStatus) => Promise<void>;
 }
+
+export const RSVP_PENDING_TIMEOUT_MS = 60000;
 
 export const RSVP_CHIPS: { status: RsvpStatus; label: string; path: string }[] = [
   {
@@ -156,7 +163,7 @@ function formatTimeOfDay(dateTime: string): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function formatTimeRange(event: CalendarEvent): string {
+export function formatTimeRange(event: CalendarEvent): string {
   const startDateTime = event.start.dateTime;
   const endDateTime = event.end.dateTime;
   if (!startDateTime) return '';
@@ -184,7 +191,42 @@ export function CalendarPane(props: CalendarPaneProps) {
     if (typeof controller.hydrate === 'function') void Promise.resolve(controller.hydrate()).catch(() => {});
   }, [controller]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const events = useMemo(() => controller.getEvents(), [controller, version]);
+  const serverEvents = useMemo(() => controller.getEvents(), [controller, version]);
+  const [overrides, setOverrides] = useState<Map<string, RsvpStatus>>(() => new Map());
+  const events = useMemo(
+    () =>
+      overrides.size === 0
+        ? serverEvents
+        : serverEvents.map((e) => {
+            const o = overrides.get(getCalendarEventKey(e));
+            return o ? { ...e, selfResponseStatus: o } : e;
+          }),
+    [serverEvents, overrides],
+  );
+  const [rsvpPending, setRsvpPending] = useState(false);
+  const [rsvpError, setRsvpError] = useState(false);
+  const rsvpPendingRef = useRef(false);
+  const rsvpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const detailKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (rsvpTimerRef.current) clearTimeout(rsvpTimerRef.current);
+    };
+  }, []);
+  // Server truth wins: a refresh delivering a key clears its override.
+  useEffect(() => {
+    setOverrides((prev) => {
+      if (prev.size === 0) return prev;
+      const keys = new Set(serverEvents.map(getCalendarEventKey));
+      const next = new Map(prev);
+      let changed = false;
+      for (const k of prev.keys()) if (keys.has(k)) { next.delete(k); changed = true; }
+      return changed ? next : prev;
+    });
+  }, [serverEvents]);
   const statuses = controller.getSourceStatus();
   const connected = props.connected ?? sources.length > 0;
   const ctrlState =
@@ -210,6 +252,51 @@ export function CalendarPane(props: CalendarPaneProps) {
   const [now, setNow] = useState(() => new Date());
   const [detail, setDetail] = useState<{ snapshot: CalendarEvent; trigger: HTMLElement } | null>(null);
   const detailKey = detail ? getCalendarEventKey(detail.snapshot) : null;
+  detailKeyRef.current = detailKey;
+  useEffect(() => {
+    setRsvpPending(false);
+    setRsvpError(false);
+  }, [detailKey]);
+
+  function handleRsvpChange(_event: CalendarEvent, status: RsvpStatus) {
+    const onRsvpChange = props.onRsvpChange;
+    const raw = detail?.snapshot;
+    if (!onRsvpChange || !raw || rsvpPendingRef.current) return;
+    const key = getCalendarEventKey(raw);
+    const rollback = () =>
+      setOverrides((m) => {
+        if (!m.has(key)) return m;
+        const n = new Map(m);
+        n.delete(key);
+        return n;
+      });
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      if (rsvpTimerRef.current) clearTimeout(rsvpTimerRef.current);
+      rsvpTimerRef.current = null;
+      rsvpPendingRef.current = false;
+      if (!mountedRef.current) return;
+      if (!ok) rollback();
+      if (detailKeyRef.current === key) {
+        setRsvpPending(false);
+        setRsvpError(!ok);
+      }
+    };
+    rsvpPendingRef.current = true;
+    setRsvpPending(true);
+    setRsvpError(false);
+    setOverrides((m) => new Map(m).set(key, status));
+    rsvpTimerRef.current = setTimeout(() => finish(false), RSVP_PENDING_TIMEOUT_MS);
+    let p: Promise<void>;
+    try {
+      p = Promise.resolve(onRsvpChange(raw, status));
+    } catch {
+      p = Promise.reject(new Error('rsvp failed'));
+    }
+    p.then(() => finish(true), () => finish(false));
+  }
 
   function closeDetail(returnFocus: boolean) {
     const trigger = detail?.trigger;
@@ -220,9 +307,9 @@ export function CalendarPane(props: CalendarPaneProps) {
   // Refresh with the same key updates the snapshot; a vanished key keeps the last snapshot.
   useEffect(() => {
     if (detailKey === null) return;
-    const fresh = events.find((e) => getCalendarEventKey(e) === detailKey);
+    const fresh = serverEvents.find((e) => getCalendarEventKey(e) === detailKey);
     if (fresh) setDetail((d) => (d && d.snapshot !== fresh ? { ...d, snapshot: fresh } : d));
-  }, [events, detailKey]);
+  }, [serverEvents, detailKey]);
 
   const selectionSignature = sources
     .map((s) => `${s.id}:${[...controller.getSelectedIds(s.id)].sort().join(',')}`)
@@ -280,8 +367,11 @@ export function CalendarPane(props: CalendarPaneProps) {
   );
 
   const filteredEvents = useMemo(
-    () => filterByRsvp(events, selectedRsvpStatuses),
-    [events, selectedRsvpStatuses]
+    () => {
+      const visible = new Set(filterByRsvp(events, selectedRsvpStatuses));
+      return events.filter((e) => visible.has(e) || getCalendarEventKey(e) === detailKey);
+    },
+    [events, selectedRsvpStatuses, detailKey]
   );
 
   const calendarsByKey = useMemo(() => {
@@ -552,7 +642,7 @@ export function CalendarPane(props: CalendarPaneProps) {
   const showCalendarSelector = calendarSources.length > 0;
 
   return (
-    <div className="calendar-pane" data-calendar-theme={theme} ref={paneRef}>
+    <div className={`calendar-pane${showCalendarSelector ? ' calendar-pane--has-footer' : ''}`} data-calendar-theme={theme} ref={paneRef}>
       <div className="calendar-pane-scroll" ref={scrollRef}>
       <div className="calendar-rsvp-chips" ref={chipsRef}>
         <div className="calendar-rsvp-chip-group" role="group" aria-label="RSVP Status Filters">
@@ -739,7 +829,13 @@ export function CalendarPane(props: CalendarPaneProps) {
       )}
       </div>
       {showCalendarSelector && (
-        <footer className="calendar-pane-footer">
+        <footer
+          className="calendar-pane-footer"
+          onPointerDownCapture={() => {
+            // Close without preventDefault/stopPropagation so the footer action proceeds.
+            if (detail) setDetail(null);
+          }}
+        >
           <GroupedCalendarSelector theme={theme} groups={calendarSources.map((s) => ({
               id: s.id,
               calendars: controller.getCalendars(s.id),
@@ -753,7 +849,13 @@ export function CalendarPane(props: CalendarPaneProps) {
       )}
       {detail && (
         <EventDetails
-          event={detail.snapshot}
+          event={(() => {
+            const o = overrides.get(detailKey as string);
+            return o ? { ...detail.snapshot, selfResponseStatus: o } : detail.snapshot;
+          })()}
+          onRsvpChange={props.onRsvpChange ? handleRsvpChange : undefined}
+          pending={rsvpPending}
+          error={rsvpError}
           calendar={calendarsByKey.get(`${detail.snapshot.sourceId}\u0000${detail.snapshot.calendarId}`)}
           sourceLabel={multi ? sourceEmail(detail.snapshot.sourceId) : ''}
           onClose={() => closeDetail(true)}

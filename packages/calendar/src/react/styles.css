@@ -856,6 +856,10 @@
   background: rgb(0 0 0 / 45%);
 }
 
+.calendar-pane--has-footer > .calendar-event-details {
+  bottom: var(--calendar-footer-height);
+}
+
 .calendar-event-details-sheet {
   box-sizing: border-box;
   max-height: 80%;
@@ -904,6 +908,104 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.calendar-event-details-toprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-event-details-time {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-event-details-organizer,
+.calendar-event-details-calendar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 0.9em;
+}
+
+.calendar-event-details-invitees h3 {
+  margin: 0 0 4px;
+  font-size: 0.95em;
+}
+
+.calendar-event-details-invitee-summary {
+  margin-bottom: 6px;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.calendar-event-details-invitees ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-event-details-invitees li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 2px 0;
+  font-size: 0.9em;
+}
+
+.calendar-event-details-tag {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--calendar-badge);
+  color: var(--calendar-badge-text);
+  font-size: 0.75em;
+}
+
+.calendar-event-details-rsvp [role='radiogroup'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calendar-event-details-rsvp [role='radio'] {
+  padding: 4px 12px;
+  border: 1px solid var(--calendar-chip-border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--calendar-chip-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-event-details-rsvp [role='radio'][aria-checked='true'] {
+  border-color: var(--calendar-chip-selected);
+  background: var(--calendar-chip-selected);
+  color: var(--calendar-chip-selected-text);
+}
+
+.calendar-event-details-rsvp [role='radio']:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 2px;
+}
+
+.calendar-event-details-rsvp [role='radio']:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.calendar-event-details-rsvp-status {
+  margin-top: 6px;
+  font-size: 0.85em;
+  color: var(--calendar-rsvp-declined);
+}
+
+.calendar-event-details-body {
+  min-height: 0;
 }
 
 .calendar-event-details-body > section {

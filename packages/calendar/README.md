@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.14.0 is additive and non-breaking.** The event details overlay is redesigned, and the optional `onRsvpChange` prop lets the host write RSVP changes. See [0.14.0](#0140-minor-additive-non-breaking).
+>
 > **0.13.0 is BREAKING.** Clicking an event title now opens an in-pane event details overlay instead of a popup window. See [0.13.0](#0130-breaking-pre-10-minor).
 >
 > **0.12.0 is BREAKING.** See [0.12.0](#0120-breaking-pre-10-minor) for exclusive Unaccepted filtering and new RSVP defaults.
@@ -163,15 +165,93 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
 | `onClose?` | `() => void` | |
 | `popupName?` | `string` | `window.open` name for the event popup window (default `notesdiary-cal-event`). The popup now opens only from the overlay's "Open in Google Calendar" link |
+| `onRsvpChange?` | `(event: CalendarEvent, status: RsvpStatus) => Promise<void>` | 0.14.0. Host-owned RSVP writer. When absent, the overlay has no "Change RSVP" row. The package never writes to Google itself. See [Change RSVP](#change-rsvp-onrsvpchange) |
 
 #### Event details overlay
 
-A plain left click on an event title opens a bottom-sheet overlay inside the pane (`role="dialog"`, `aria-modal="true"`). It shows the time, calendar, organizer, Join and RSVP controls, location, a plain-text description, and attendees (the first 10, then "+N more"). It also has an "Open in Google Calendar" link.
+A plain left click on an event title opens a bottom-sheet overlay inside the pane (`role="dialog"`, `aria-modal="true"`). The sheet is laid out like the event card, but larger, top to bottom:
 
-- Close with Escape, the close (X) button, or a click on the backdrop. Focus is trapped inside the sheet while it is open and returns to the title that opened it when it closes.
+1. Top row, same information as the card: time range (or `All day`), Join (only when `joinUrl` is set), a read-only RSVP status, and the close (×) button.
+2. Title (the dialog's accessible name, an `h2`).
+3. Organizer row: the label "Organizer", the organizer label, and "(you)" when `organizer.self` is true. Hidden when there is no organizer label.
+4. Calendar line: calendar color dot, calendar name, source (account) label, and location when set.
+5. Description: plain text (HTML is stripped), with links kept clickable.
+6. Invitees (see [Invitee rules](#invitee-rules)).
+7. Change RSVP (see [Change RSVP](#change-rsvp-onrsvpchange)).
+8. "Open in Google Calendar" link (only when `htmlLink` is set).
+
+- Close with Escape, the close (X) button, or a click on the backdrop. Focus is trapped inside the sheet while it is open, starts on the sheet, and returns to the title that opened it when it closes.
 - Modified clicks (ctrl, cmd, shift, alt, or middle click) keep the native new-tab behavior of the title link.
 - Events without an `htmlLink` still open the overlay. The "Open in Google Calendar" link is hidden for them.
 - There is no prop to opt out. Hosts that relied on the title click opening a popup window must use the overlay's link or handle the click themselves.
+- The time-range formatting is the same as the event card's.
+
+##### Invitee rules
+
+- The heading reads `Invitees (N)`, where N is the total number of attendees.
+- The summary line counts each status: `yes` (accepted), `maybe` (tentative), `awaiting` (needs action, and any unknown status), `no` (declined), joined with ` · `. Zero buckets are omitted, so the summary reads, for example, `2 yes · 1 maybe · 1 awaiting`. An empty attendee list gives an empty summary.
+- Order: the organizer first, then you (self), then accepted, tentative, needs action, declined. Within each status, rows sort by name (display name, else email), case-insensitively. An organizer who is also you appears once, first.
+- Tags: `Organizer` on the organizer's row and `(you)` on your row. Every row shows its status glyph and label (Accepted, Maybe, Declined, Unaccepted). An attendee without a display name shows the email.
+- At most 10 rows show at first. A `Show all N` button expands the list in place and changes to `Show fewer`. It sets `aria-expanded`.
+
+##### Hidden-row matrix
+
+| Case | Invitees | Change RSVP | Organizer row |
+| --- | --- | --- | --- |
+| No attendees | hidden | hidden | shown when there is an organizer label |
+| Only you are listed | hidden | hidden | shown when there is an organizer label |
+| You are not invited (no attendee is `self`) | shown | hidden | shown when there is an organizer label |
+| Invited, no `onRsvpChange` | shown | hidden | shown when there is an organizer label |
+| Invited, `onRsvpChange` provided | shown | shown | shown when there is an organizer label |
+
+##### Change RSVP (`onRsvpChange`)
+
+`onRsvpChange` is an optional prop on `CalendarPane`. The host does the write; the package makes no Google request for it and asks for no new OAuth scopes. Recurring events are handled per instance: the `event` passed to the host is the instance the user opened.
+
+- The row is a radiogroup labeled "Change RSVP" with three options: Yes (accepted), Maybe (tentative), and No (declined). Unaccepted is not offered. Each option is a radio with `aria-checked`. Arrow keys move between options. The row shows only when the prop is set, you are an attendee, and the event has attendees.
+- Choosing an option calls `onRsvpChange(event, status)` once. Choosing the already selected option still calls it, so a host can rely on one call per click.
+- Optimistic update: the overlay and the event card show the new status at once. The options are disabled while the write is pending, and a live region reads "Updating RSVP...".
+- Success: the override stays until a controller refresh delivers that event, so the server's status takes over then. If the new status is hidden by the RSVP filter chips, the overlay stays open, and the card leaves the list only after the overlay closes. Changing filter chips still closes the overlay, as before.
+- Failure: if the promise rejects or throws, or does not settle within **60 seconds** (`RSVP_PENDING_TIMEOUT_MS = 60000`), the previous status comes back and the live region shows "Couldn't update RSVP. Retry". Retry sends the last chosen status again. A result that arrives after the timeout is ignored. The timer is not cleared by closing the overlay, so a timed-out write still rolls back. In that case no error message shows, because the overlay is closed.
+- The overlay's status and the card's status come from the same override, so both change together.
+
+Host example. The host owns the token and the Google request. Fetch the event, change only your own attendee entry, then patch the attendee list:
+
+```tsx
+<CalendarPane
+  // ...other props
+  onRsvpChange={async (event, status) => {
+    const token = await getAccessToken(event.sourceId); // host-owned token
+    const calendarId = encodeURIComponent(event.calendarId ?? 'primary');
+    const eventUrl = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events/${encodeURIComponent(event.id)}`;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    const current = await fetch(eventUrl, { headers }).then((r) => {
+      if (!r.ok) throw new Error(`GET event failed: ${r.status}`);
+      return r.json();
+    });
+    const attendees = (current.attendees ?? []).map((a: { self?: boolean; responseStatus?: string }) =>
+      a.self ? { ...a, responseStatus: status } : a,
+    );
+
+    const res = await fetch(`${eventUrl}?sendUpdates=all`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ attendees }),
+    });
+    if (!res.ok) throw new Error(`PATCH event failed: ${res.status}`); // rejects, so the overlay rolls back
+  }}
+/>
+```
+
+Google's `responseStatus` values match `RsvpStatus` for the three options (`accepted`, `tentative`, `declined`). Choose `sendUpdates` to match your notification policy.
+
+##### Footer-safe overlay
+
+- When the pane renders its footer (`.calendar-pane--has-footer`, which needs calendars), the backdrop and sheet stop at the footer's top edge. The footer stays visible, undimmed, and clickable. Without a footer, the overlay covers the whole pane.
+- The footer height comes from `--calendar-footer-height` (default `64px`). If the host changes the footer height, set this variable on `.calendar-pane` to match.
+- The sheet's maximum height is 80% of the area above the footer, and it scrolls internally.
+- A click on the footer while the overlay is open closes the overlay, and the footer action still runs (for example, the calendar dropdown opens). Focus does not return to the title in that case, because the footer action takes focus.
 
 `CalendarEvent` gains optional fields used by the overlay: `location?: string`, `description?: string` (HTML is converted to plain text for display), and `attendees?: CalendarEventAttendee[]`, where `CalendarEventAttendee` is `{ email: string; displayName?: string; responseStatus: RsvpStatus; self?: boolean; organizer?: boolean }`. Missing fields are simply not shown.
 
@@ -244,16 +324,30 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
-Event details overlay (0.13.0): `.calendar-event-details` is the full-pane backdrop (absolutely positioned inside the pane root, dimmed, bottom-aligned) and `.calendar-event-details-sheet` is the bottom sheet (max 80% of the pane height, scrolls internally). Both use the pane's palette tokens, so they follow the pane's `theme`. Inner hooks: `-grabber`, `-header`, `-dot`, `-title`, `-close`, `-body`, `-when`, `-calendar`, and related `calendar-event-details-*` section classes. The overlay is positioned against the nearest positioned ancestor, so the pane root must stay positioned.
+Event details overlay (0.13.0, footer-safe and redesigned in 0.14.0): `.calendar-event-details` is the backdrop (absolutely positioned inside the pane root, dimmed, bottom-aligned). In a pane with a footer, `.calendar-pane--has-footer > .calendar-event-details` sets `bottom: var(--calendar-footer-height)` so the footer is not covered. `.calendar-event-details-sheet` is the bottom sheet (max 80% of the area above the footer, scrolls internally). Both use the pane's palette tokens, so they follow the pane's `theme`. The overlay is positioned against the nearest positioned ancestor, so the pane root must stay positioned.
+
+Overlay hooks (0.14.0). Layout: `-grabber`, `-toprow`, `-time`, `-close`, `-header`, `-title`, `-dot`, `-body`. Sections: `-organizer`, `-calendar`, `-location` (span inside `-calendar`), `-description`, `-invitees` (contains `h3`, `-invitee-summary`, `ul`/`li`), `-tag` (Organizer and (you) tags), `-rsvp` (contains `[role='radiogroup']`, `[role='radio']` with `aria-checked`, and `-rsvp-status` for the live region), `-open`. The per-row status pill uses the shared `.calendar-event-rsvp` and `.calendar-event-rsvp--{status}` classes. The 0.13.0 `-when`, `-actions` and `-attendees` section classes are no longer rendered. Disabled RSVP options carry the native `disabled` attribute and the `:disabled` style.
+
+The `--calendar-footer-height` variable is the one host value the overlay reads. Keep it equal to the host's footer height when the footer is changed.
 
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
 
+## 0.14.0 (minor, additive, non-breaking)
+
+- Additive only. No existing prop, return value, thrown error, storage field or contract test changed. No migration is required. The version bump is 0.13.0 to 0.14.0.
+- Event details overlay redesigned: a top row matching the card (time or `All day`, Join, read-only RSVP status, close), then title, Organizer, calendar and location, description, Invitees, Change RSVP, and "Open in Google Calendar".
+- Invitees section: `Invitees (N)`, a summary line (`yes`, `maybe`, `awaiting`, `no`), and a sorted list with Organizer and (you) tags. Ten rows show first, with a `Show all N` button that expands in place.
+- New optional `onRsvpChange?: (event, status) => Promise<void>` prop on `CalendarPane`. The host performs the Google write with its own token. The package makes no Google write and requests no new scopes. Without the prop, the overlay has no Change RSVP row.
+- RSVP changes are optimistic: the overlay and card update at once. A rejected or timed-out (60 seconds) write rolls back and shows "Couldn't update RSVP. Retry", with Retry resending the last status.
+- The overlay is footer-safe. With a footer rendered, the footer stays visible and clickable above the overlay, and the overlay height is limited by `--calendar-footer-height`.
+- New and renamed overlay CSS hooks are listed under [Host CSS](#host-css). `-when`, `-actions` and `-attendees` are no longer rendered.
+
 ## 0.13.0 (BREAKING pre-1.0 minor)
 
 - Plain left click on an event title opens an in-pane event details overlay (bottom sheet, `role="dialog"`, `aria-modal`) instead of the event popup window. It closes with Escape, the X button or the backdrop, traps focus while open and returns focus to the title on close.
-- The overlay shows time, calendar, organizer, Join and RSVP, location, plain-text description, and attendees (max 10, then "+N more"), with an "Open in Google Calendar" link.
+- The overlay shows time, calendar, organizer, Join and RSVP, location, plain-text description, and the first 10 attendees, with an "Open in Google Calendar" link.
 - The `popupName` popup window now opens only from that link. Modified clicks (ctrl/cmd/shift/alt/middle) keep the native new-tab behavior. Events without `htmlLink` open the overlay too.
 - `CalendarEvent` gains optional `location`, `description` and `attendees` (`CalendarEventAttendee[]`). Existing rows without them still read.
 - New host CSS hooks: `.calendar-event-details` and `.calendar-event-details-sheet`.
