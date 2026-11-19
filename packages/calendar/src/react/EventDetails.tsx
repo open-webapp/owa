@@ -30,15 +30,6 @@ function rsvpOf(status: string) {
   return RSVP_CHIPS.find((c) => c.status === status) ?? RSVP_CHIPS[3];
 }
 
-function Status({ status }: { status: string }) {
-  const g = rsvpOf(status);
-  return (
-    <span className={`calendar-event-rsvp calendar-event-rsvp--${g.status}`}>
-      <RsvpGlyph path={g.path} size={14} strokeWidth={2.4} /> {g.label}
-    </span>
-  );
-}
-
 export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink, onRsvpChange, pending, error, onRetry }: EventDetailsProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const lastStatus = useRef<RsvpStatus | null>(null);
@@ -135,7 +126,7 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
           <h2 className="calendar-event-details-title">{event.summary}</h2>
         </div>
         <div className="calendar-event-details-body">
-          {organizer && (
+          {organizer && !showInvitees && (
             <section className="calendar-event-details-organizer">
               <span>Organizer</span> <span>{organizer}</span>
               {event.organizer.self && <span> (you)</span>}
@@ -176,7 +167,7 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
                     <span>{a.displayName || a.email}</span>
                     {a.organizer && <span className="calendar-event-details-tag"> Organizer</span>}
                     {a.self && <span className="calendar-event-details-tag"> (you)</span>}{' '}
-                    <Status status={a.responseStatus} />
+                    <RsvpStatusIcon status={a.responseStatus as CalendarEvent['selfResponseStatus']} />
                   </li>
                 ))}
               </ul>

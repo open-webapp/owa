@@ -336,7 +336,7 @@ Done, Select all and Clear use the approved action-only flat styling via `.calen
 
 ## 0.14.2 (patch)
 
-- The overlay top row carries the card's `calendar-event-row--rsvp-{status}` class so the Join link gets the same status-coloured styling as on the card. No API change.
+- The overlay top row carries the card's `calendar-event-row--rsvp-{status}` class so the Join link gets the same status-coloured styling as on the card. The Organizer row under the title is dropped when the invitee list is shown (the organizer is tagged in the list), and invitee statuses use the card's icon-only status badge instead of a text pill. No API change.
 
 ## 0.14.1 (patch)
 
