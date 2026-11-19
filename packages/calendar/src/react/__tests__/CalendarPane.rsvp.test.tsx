@@ -17,9 +17,11 @@ function inviteEvent(over: Partial<CalendarEvent> = {}) {
 const radio = (n: string) => screen.getByRole('radio', { name: n });
 const card = () => document.querySelector('.calendar-event-header .calendar-event-rsvp') as HTMLElement | null;
 const open = () => fireEvent.click(screen.getByRole('link', { name: 'Alpha' }));
+const note = () => screen.getByLabelText('Note to organizer (optional)');
+const send = () => screen.getByRole('button', { name: 'Send' });
 const flush = () => act(async () => {});
 
-function setup(events: CalendarEvent[], handler?: (e: CalendarEvent, s: string) => Promise<void>, extra: Record<string, unknown> = {}) {
+function setup(events: CalendarEvent[], handler?: (e: CalendarEvent, s: string, c?: string) => Promise<void>, extra: Record<string, unknown> = {}) {
   const props = baseProps({ events });
   const ctl = props.controller;
   let evs = events;
@@ -41,7 +43,10 @@ describe('CalendarPane RSVP change', () => {
     setup([e], h);
     open();
     fireEvent.click(radio('Yes'));
-    expect(h).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'accepted');
+    expect(h).not.toHaveBeenCalled();
+    fireEvent.change(note(), { target: { value: ' running late ' } });
+    fireEvent.click(send());
+    expect(h).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'accepted', 'running late');
     expect(radio('Yes')).toHaveAttribute('aria-checked', 'true');
     expect(card()).toHaveAttribute('aria-label', 'accepted');
   });
@@ -52,9 +57,11 @@ describe('CalendarPane RSVP change', () => {
     setup([inviteEvent()], h);
     open();
     fireEvent.click(radio('No'));
+    fireEvent.click(send());
     expect(radio('Yes')).toBeDisabled();
     fireEvent.click(radio('Maybe'));
     expect(h).toHaveBeenCalledTimes(1);
+    expect(send()).toBeDisabled();
     res();
     await flush();
     expect(radio('Yes')).not.toBeDisabled();
@@ -66,9 +73,10 @@ describe('CalendarPane RSVP change', () => {
     setup([inviteEvent()], h);
     open();
     fireEvent.click(radio('No'));
+    fireEvent.click(send());
     await flush();
-    expect(radio('Yes')).toHaveAttribute('aria-checked', 'true');
-    expect(card()).toHaveAttribute('aria-label', 'accepted');
+    expect(radio('No')).toHaveAttribute('aria-checked', 'true'); // draft selection kept
+    expect(card()).toHaveAttribute('aria-label', 'accepted'); // saved status rolled back
     expect(screen.getByText("Couldn't update RSVP.")).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await flush();
@@ -81,11 +89,21 @@ describe('CalendarPane RSVP change', () => {
     setup([e], vi.fn().mockResolvedValue(undefined), { selectedRsvpStatuses: new Set(['needsAction']) });
     open();
     fireEvent.click(radio('Yes'));
+    fireEvent.click(send());
     await flush();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Alpha' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('link', { name: 'Alpha' })).not.toBeInTheDocument();
+  });
+
+  it('empty note passes undefined comment', async () => {
+    const h = vi.fn().mockResolvedValue(undefined);
+    setup([inviteEvent()], h);
+    open();
+    fireEvent.click(radio('No'));
+    fireEvent.click(send());
+    expect(h).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'declined', undefined);
   });
 
   it('no radio checked when self is needsAction', () => {
@@ -115,13 +133,14 @@ describe('CalendarPane RSVP change', () => {
     setup([inviteEvent()], h);
     open();
     fireEvent.click(radio('No'));
+    fireEvent.click(send());
     await act(async () => { vi.advanceTimersByTime(60000); });
-    expect(radio('Yes')).toHaveAttribute('aria-checked', 'true');
     expect(radio('Yes')).not.toBeDisabled();
+    expect(card()).toHaveAttribute('aria-label', 'accepted');
     expect(screen.getByText("Couldn't update RSVP.")).toBeVisible();
     res();
     await flush();
-    expect(radio('Yes')).toHaveAttribute('aria-checked', 'true');
+    expect(card()).toHaveAttribute('aria-label', 'accepted');
   });
 
   it('unmount while pending clears the 60s timer', async () => {
@@ -131,6 +150,7 @@ describe('CalendarPane RSVP change', () => {
     const { unmount } = setup([inviteEvent()], h);
     open();
     fireEvent.click(radio('No'));
+    fireEvent.click(send());
     const idx = st.mock.calls.findIndex((c) => c[1] === 60000);
     expect(idx).toBeGreaterThanOrEqual(0);
     const id = st.mock.results[idx].value;
@@ -144,6 +164,7 @@ describe('CalendarPane RSVP change', () => {
     const r = setup([inviteEvent()], h);
     open();
     fireEvent.click(radio('No'));
+    fireEvent.click(send());
     r.rerender(<CalendarPane {...r.props} selectedRsvpStatuses={new Set(['accepted'])} onRsvpChange={h as never} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     res();
@@ -161,6 +182,7 @@ describe('CalendarPane RSVP change', () => {
     render(<CalendarPane {...props} onRsvpChange={h} />);
     open();
     fireEvent.click(radio('Yes'));
+    fireEvent.click(send());
     await flush();
     expect(card()).toHaveAttribute('aria-label', 'accepted');
     evs = [{ ...e, selfResponseStatus: 'declined' }];

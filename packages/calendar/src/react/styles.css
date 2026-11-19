@@ -985,6 +985,56 @@
   cursor: default;
 }
 
+.calendar-event-details-rsvp-note {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.calendar-event-details-rsvp-note label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85em;
+}
+
+.calendar-event-details-rsvp-note input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--calendar-chip-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.calendar-event-details-rsvp-note input:focus-visible,
+.calendar-event-details-rsvp-send:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 2px;
+}
+
+.calendar-event-details-rsvp-send {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border: 1px solid var(--calendar-chip-selected);
+  border-radius: 14px;
+  background: var(--calendar-chip-selected);
+  color: var(--calendar-chip-selected-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-event-details-rsvp-send:disabled,
+.calendar-event-details-rsvp-note input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .calendar-event-details-rsvp-status {
   margin-top: 6px;
   font-size: 0.85em;

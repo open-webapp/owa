@@ -1,6 +1,6 @@
 {
   "name": "@open-webapp/calendar",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -25,7 +25,8 @@
   "scripts": {
     "build": "tsc && cp src/react/styles.css dist/styles.css",
     "test": "vitest run",
-    "test:theme-browser": "vitest run --config vitest.browser.config.ts"
+    "test:theme-browser": "vitest run --config vitest.browser.config.ts",
+    "lint": "oxlint --type-aware src"
   },
   "peerDependencies": {
     "react": "^19",
@@ -41,6 +42,8 @@
     "@vitest/browser": "2.1.9",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^30.0.1",
+    "oxlint": "^1.94.0",
+    "oxlint-tsgolint": "^7.0.2007",
     "playwright": "1.51.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
