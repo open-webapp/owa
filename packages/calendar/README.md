@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.16.0 is additive and non-breaking.** New optional `resolveContact` prop supplies contact names and avatars in the event details overlay. See [0.16.0](#0160-minor-additive-non-breaking).
+
 > **0.15.0 is additive and non-breaking.** RSVP changes in the overlay now take an optional note and are sent with a Send button; `onRsvpChange` gets an optional third `note` argument. See [0.15.0](#0150-minor-additive-non-breaking).
 >
 > **0.14.0 is additive and non-breaking.** The event details overlay is redesigned, and the optional `onRsvpChange` prop lets the host write RSVP changes. See [0.14.0](#0140-minor-additive-non-breaking).
@@ -167,6 +169,7 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
 | `onClose?` | `() => void` | |
 | `popupName?` | `string` | `window.open` name for the event popup window (default `notesdiary-cal-event`). The popup now opens only from the overlay's "Open in Google Calendar" link |
+| `resolveContact?` | `(email: string) => { name?: string; photoUrl?: string } \| undefined` | 0.16.0. Contact lookup for overlay invitee and organizer rows and list-row organizer labels: `name` beats `displayName`; avatar only when `photoUrl`, overlay only. Absent = unchanged. No dependency on contacts. |
 | `onRsvpChange?` | `(event: CalendarEvent, status: RsvpStatus, note?: string) => Promise<void>` | 0.14.0 (`note` added in 0.15.0). Host-owned RSVP writer. When absent, the overlay has no "Change RSVP" row. The package never writes to Google itself. See [Change RSVP](#change-rsvp-onrsvpchange) |
 
 #### Event details overlay
@@ -335,6 +338,10 @@ The `--calendar-footer-height` variable is the one host value the overlay reads.
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.16.0 (minor, additive, non-breaking)
+
+- Optional `resolveContact?: (email: string) => { name?: string; photoUrl?: string } | undefined` on `CalendarPane`: in the event details overlay, a returned `name` wins over the event `displayName` (and email) on invitee rows and the organizer row, and the organizer label in list rows resolves the same way (via `getOrganizerLabel(event, resolveContact?)`, "You" kept when `organizer.self` and nothing resolves, multi-source rows keep the `· <account email>` suffix); a 20px round avatar `img` renders only when `photoUrl` is returned, in the overlay only (list rows never render avatars). The host normalizes emails; the package passes the email as given by the event. Absent prop or `undefined` result leaves output unchanged. Calendar has no dependency on `@open-webapp/contacts`; hosts wire any lookup.
 
 ## 0.15.0 (minor, additive, non-breaking)
 

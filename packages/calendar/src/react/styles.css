@@ -945,6 +945,14 @@
   font-size: 0.9em;
 }
 
+.calendar-event-details-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--calendar-badge);
+}
+
 .calendar-event-details-tag {
   padding: 0 6px;
   border-radius: 8px;

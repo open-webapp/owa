@@ -59,9 +59,19 @@ export function filterByRsvp(events: CalendarEvent[], selected: ReadonlySet<Rsvp
   return events.filter((e) => selected.has(e.selfResponseStatus));
 }
 
-/** displayName -> email -> "You" (only when organizer.self is true and both above are absent). */
-export function getOrganizerLabel(event: CalendarEvent): string {
+/**
+ * contact name (optional resolver) -> displayName -> email -> "You" (only when organizer.self
+ * is true and all above are absent).
+ */
+export function getOrganizerLabel(
+  event: CalendarEvent,
+  resolveContact?: (email: string) => { name?: string; photoUrl?: string } | undefined,
+): string {
   const { organizer } = event;
+  if (resolveContact && organizer.email) {
+    const name = resolveContact(organizer.email)?.name;
+    if (name) return name;
+  }
   if (organizer.displayName) return organizer.displayName;
   if (organizer.email) return organizer.email;
   if (organizer.self === true) return 'You';
