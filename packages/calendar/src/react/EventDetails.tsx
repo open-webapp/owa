@@ -117,7 +117,7 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
         onClick={(e) => e.stopPropagation()}
       >
         <div className="calendar-event-details-grabber" aria-hidden="true" />
-        <div className="calendar-event-header calendar-event-details-toprow">
+        <div className={`calendar-event-header calendar-event-details-toprow calendar-event-row--rsvp-${rsvpOf(event.selfResponseStatus).status}`}>
           <span className="calendar-event-time">{time}</span>
           <div className="calendar-event-actions">
             {event.joinUrl && (

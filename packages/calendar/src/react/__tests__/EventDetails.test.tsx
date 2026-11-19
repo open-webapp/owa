@@ -68,7 +68,7 @@ describe('EventDetails', () => {
   it('top row mirrors the event card markup (header, time, actions, join class)', () => {
     setup({ start: { dateTime: '2026-03-02T09:00:00-08:00' }, end: { dateTime: '2026-03-02T09:30:00-08:00' } });
     const row = document.querySelector('.calendar-event-details-toprow')!;
-    expect(row).toHaveClass('calendar-event-header');
+    expect(row).toHaveClass('calendar-event-header', 'calendar-event-row--rsvp-accepted');
     expect(row.querySelector('.calendar-event-time')).not.toBeNull();
     expect(row.querySelector('.calendar-event-actions a.calendar-event-join')).not.toBeNull();
   });
