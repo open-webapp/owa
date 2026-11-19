@@ -910,19 +910,6 @@
   cursor: pointer;
 }
 
-.calendar-event-details-toprow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.calendar-event-details-time {
-  flex: 1;
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .calendar-event-details-organizer,
 .calendar-event-details-calendar {
   display: flex;

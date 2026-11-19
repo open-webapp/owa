@@ -33,7 +33,7 @@ describe('EventDetails', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     const text = dialog.textContent ?? '';
-    const order = ['9:00', 'Join', 'Accepted', 'Planning', 'Organizer', 'Olive', 'Work', 'me@example.com', 'Room 4', 'Agenda'];
+    const order = ['9:00', 'Join', 'Planning', 'Organizer', 'Olive', 'Work', 'me@example.com', 'Room 4', 'Agenda'];
     let last = -1;
     for (const s of order) {
       const i = text.indexOf(s, last + 1);
@@ -59,8 +59,18 @@ describe('EventDetails', () => {
 
   it('top-row status is neither radio nor button', () => {
     setup();
-    const status = screen.getByText('Accepted', { selector: '.calendar-event-details-toprow *' });
+    const status = screen.getByRole('img', { name: 'accepted' });
+    expect(status.closest('.calendar-event-details-toprow')).not.toBeNull();
+    expect(status).toHaveClass('calendar-event-rsvp', 'calendar-event-rsvp--accepted');
     expect(status.closest('[role="radio"],button')).toBeNull();
+  });
+
+  it('top row mirrors the event card markup (header, time, actions, join class)', () => {
+    setup({ start: { dateTime: '2026-03-02T09:00:00-08:00' }, end: { dateTime: '2026-03-02T09:30:00-08:00' } });
+    const row = document.querySelector('.calendar-event-details-toprow')!;
+    expect(row).toHaveClass('calendar-event-header');
+    expect(row.querySelector('.calendar-event-time')).not.toBeNull();
+    expect(row.querySelector('.calendar-event-actions a.calendar-event-join')).not.toBeNull();
   });
 
   it('omits absent sections', () => {

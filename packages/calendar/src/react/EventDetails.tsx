@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { CalendarEvent, CalendarInfo, RsvpStatus } from '../core/types.js';
 import { getOrganizerLabel } from '../core/events.js';
-import { RSVP_CHIPS, RsvpGlyph, formatTimeRange } from './CalendarPane.js';
+import { RSVP_CHIPS, RsvpGlyph, RsvpStatusIcon, formatTimeRange } from './CalendarPane.js';
 import { htmlToPlainText, linkifyText } from './detailsText.js';
 import { sortInvitees, summarizeInvitees } from './inviteeUtils.js';
 
@@ -117,17 +117,19 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
         onClick={(e) => e.stopPropagation()}
       >
         <div className="calendar-event-details-grabber" aria-hidden="true" />
-        <div className="calendar-event-details-toprow">
-          <span className="calendar-event-details-time">{time}</span>
-          {event.joinUrl && (
-            <a href={event.joinUrl} target="_blank" rel="noopener noreferrer">
-              Join
-            </a>
-          )}
-          <Status status={event.selfResponseStatus} />
-          <button type="button" className="calendar-event-details-close" aria-label="Close" onClick={onClose}>
-            ×
-          </button>
+        <div className="calendar-event-header calendar-event-details-toprow">
+          <span className="calendar-event-time">{time}</span>
+          <div className="calendar-event-actions">
+            {event.joinUrl && (
+              <a className="calendar-event-join" href={event.joinUrl} target="_blank" rel="noopener noreferrer">
+                Join
+              </a>
+            )}
+            <RsvpStatusIcon status={event.selfResponseStatus} />
+            <button type="button" className="calendar-event-details-close" aria-label="Close" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
         <div className="calendar-event-details-header">
           <h2 className="calendar-event-details-title">{event.summary}</h2>
