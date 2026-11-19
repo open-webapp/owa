@@ -334,6 +334,10 @@ The shared `.calendar-selector-trigger` uses border-box inline-flex, centered al
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
 
+## 0.14.2 (patch)
+
+- The overlay top row carries the card's `calendar-event-row--rsvp-{status}` class so the Join link gets the same status-coloured styling as on the card. The Organizer row under the title is dropped when the invitee list is shown (the organizer is tagged in the list), and invitee statuses use the card's icon-only status badge instead of a text pill. No API change.
+
 ## 0.14.1 (patch)
 
 - The event details overlay top row now reuses the event card's markup and classes (`calendar-event-header`, `calendar-event-time`, `calendar-event-actions`, `calendar-event-join`, and the same RSVP status icon), so Join and the RSVP badge look identical to the card. The close button sits at the end of the actions group. No API change.

@@ -33,7 +33,7 @@ describe('EventDetails', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     const text = dialog.textContent ?? '';
-    const order = ['9:00', 'Join', 'Planning', 'Organizer', 'Olive', 'Work', 'me@example.com', 'Room 4', 'Agenda'];
+    const order = ['9:00', 'Join', 'Planning', 'Work', 'me@example.com', 'Room 4', 'Agenda'];
     let last = -1;
     for (const s of order) {
       const i = text.indexOf(s, last + 1);
@@ -49,7 +49,7 @@ describe('EventDetails', () => {
   });
 
   it('shows All day, omits Join/location, tags organizer (you)', () => {
-    setup({ isAllDay: true, joinUrl: undefined, location: undefined, organizer: { displayName: 'Olive', self: true } });
+    setup({ isAllDay: true, joinUrl: undefined, location: undefined, attendees: undefined, organizer: { displayName: 'Olive', self: true } });
     const dialog = screen.getByRole('dialog');
     expect(dialog.textContent).toContain('All day');
     expect(screen.queryByRole('link', { name: 'Join' })).toBeNull();
@@ -59,7 +59,7 @@ describe('EventDetails', () => {
 
   it('top-row status is neither radio nor button', () => {
     setup();
-    const status = screen.getByRole('img', { name: 'accepted' });
+    const status = within(document.querySelector('.calendar-event-details-toprow') as HTMLElement).getByRole('img', { name: 'accepted' });
     expect(status.closest('.calendar-event-details-toprow')).not.toBeNull();
     expect(status).toHaveClass('calendar-event-rsvp', 'calendar-event-rsvp--accepted');
     expect(status.closest('[role="radio"],button')).toBeNull();
@@ -68,7 +68,7 @@ describe('EventDetails', () => {
   it('top row mirrors the event card markup (header, time, actions, join class)', () => {
     setup({ start: { dateTime: '2026-03-02T09:00:00-08:00' }, end: { dateTime: '2026-03-02T09:30:00-08:00' } });
     const row = document.querySelector('.calendar-event-details-toprow')!;
-    expect(row).toHaveClass('calendar-event-header');
+    expect(row).toHaveClass('calendar-event-header', 'calendar-event-row--rsvp-accepted');
     expect(row.querySelector('.calendar-event-time')).not.toBeNull();
     expect(row.querySelector('.calendar-event-actions a.calendar-event-join')).not.toBeNull();
   });
@@ -96,6 +96,13 @@ describe('EventDetails', () => {
     expect(items[0].textContent).toContain('Organizer');
     expect(items[1].textContent).toContain('(you)');
     expect(screen.getByText('c@x.com')).toBeInTheDocument();
+  });
+
+  it('drops the top Organizer row when the invitee list is shown; statuses use the card icon', () => {
+    const { container } = setup({ attendees: four });
+    expect(container.querySelector('.calendar-event-details-organizer')).toBeNull();
+    const item = screen.getAllByRole('listitem')[0];
+    expect(item.querySelector('.calendar-event-rsvp.calendar-event-rsvp--accepted')).not.toBeNull();
   });
 
   it('caps invitees at 10 with Show all toggle', async () => {
