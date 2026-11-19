@@ -135,6 +135,7 @@ it('error text is visible after a failed RSVP', async () => {
   const { sheet } = await open('light', 'x', { invitees: 3, rsvp: true });
   const no = Array.from(sheet.querySelectorAll<HTMLElement>('[role="radio"]')).find((r) => r.textContent === 'No')!;
   await act(() => userEvent.click(no));
+  await act(() => userEvent.click(sheet.querySelector<HTMLElement>('.calendar-event-details-rsvp-send')!));
   await frame();
   const status = sheet.querySelector<HTMLElement>('.calendar-event-details-rsvp-status')!;
   expect(status.getBoundingClientRect().height).toBeGreaterThan(0);
@@ -145,6 +146,32 @@ it('pending text is visible while an RSVP is in flight', async () => {
   const { sheet } = await open('light', 'x', { invitees: 3, rsvp: true, pending: true });
   const no = Array.from(sheet.querySelectorAll<HTMLElement>('[role="radio"]')).find((r) => r.textContent === 'No')!;
   await act(() => userEvent.click(no));
+  await act(() => userEvent.click(sheet.querySelector<HTMLElement>('.calendar-event-details-rsvp-send')!));
   await frame();
   expect(sheet.querySelector<HTMLElement>('.calendar-event-details-rsvp-status')!.getBoundingClientRect().height).toBeGreaterThan(0);
+});
+
+it('note field: accessible name, tab order radios -> input -> Send, fits overlay', async () => {
+  const { sheet } = await open('light', 'x', { invitees: 3, rsvp: true });
+  const no = Array.from(sheet.querySelectorAll<HTMLElement>('[role="radio"]')).find((r) => r.textContent === 'No')!;
+  await act(() => userEvent.click(no));
+  await frame();
+  const input = sheet.querySelector<HTMLInputElement>('.calendar-event-details-rsvp-note input')!;
+  const send = sheet.querySelector<HTMLElement>('.calendar-event-details-rsvp-send')!;
+  expect(input.labels?.[0].textContent).toBe('Note to organizer (optional)');
+  no.focus();
+  await act(() => userEvent.tab());
+  expect(document.activeElement).toBe(input);
+  await act(() => userEvent.tab());
+  expect(document.activeElement).toBe(send);
+  const s = sheet.getBoundingClientRect(), i = input.getBoundingClientRect(), b = send.getBoundingClientRect();
+  expect(i.left).toBeGreaterThanOrEqual(s.left);
+  expect(b.right).toBeLessThanOrEqual(s.right + 0.5);
+  expect(sheet.scrollWidth).toBeLessThanOrEqual(sheet.clientWidth);
+});
+
+it('Join keeps the status color and top row has no glyph', async () => {
+  const { sheet } = await open('light', 'x', { invitees: 3, rsvp: true });
+  expect(sheet.querySelector('.calendar-event-details-toprow .calendar-event-rsvp')).toBeNull();
+  expect(sheet.querySelector('.calendar-event-details-toprow')!.className).toContain('calendar-event-row--rsvp-');
 });

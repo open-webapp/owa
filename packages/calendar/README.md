@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.15.0 is additive and non-breaking.** RSVP changes in the overlay now take an optional note and are sent with a Send button; `onRsvpChange` gets an optional third `note` argument. See [0.15.0](#0150-minor-additive-non-breaking).
+>
 > **0.14.0 is additive and non-breaking.** The event details overlay is redesigned, and the optional `onRsvpChange` prop lets the host write RSVP changes. See [0.14.0](#0140-minor-additive-non-breaking).
 >
 > **0.13.0 is BREAKING.** Clicking an event title now opens an in-pane event details overlay instead of a popup window. See [0.13.0](#0130-breaking-pre-10-minor).
@@ -165,13 +167,13 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
 | `onClose?` | `() => void` | |
 | `popupName?` | `string` | `window.open` name for the event popup window (default `notesdiary-cal-event`). The popup now opens only from the overlay's "Open in Google Calendar" link |
-| `onRsvpChange?` | `(event: CalendarEvent, status: RsvpStatus) => Promise<void>` | 0.14.0. Host-owned RSVP writer. When absent, the overlay has no "Change RSVP" row. The package never writes to Google itself. See [Change RSVP](#change-rsvp-onrsvpchange) |
+| `onRsvpChange?` | `(event: CalendarEvent, status: RsvpStatus, note?: string) => Promise<void>` | 0.14.0 (`note` added in 0.15.0). Host-owned RSVP writer. When absent, the overlay has no "Change RSVP" row. The package never writes to Google itself. See [Change RSVP](#change-rsvp-onrsvpchange) |
 
 #### Event details overlay
 
 A plain left click on an event title opens a bottom-sheet overlay inside the pane (`role="dialog"`, `aria-modal="true"`). The sheet is laid out like the event card, but larger, top to bottom:
 
-1. Top row, same information as the card: time range (or `All day`), Join (only when `joinUrl` is set), a read-only RSVP status, and the close (×) button.
+1. Top row, same information as the card: time range (or `All day`), Join (only when `joinUrl` is set), a status tint (no glyph since 0.15.0), and the close (×) button.
 2. Title (the dialog's accessible name, an `h2`).
 3. Organizer row: the label "Organizer", the organizer label, and "(you)" when `organizer.self` is true. Hidden when there is no organizer label.
 4. Calendar line: calendar color dot, calendar name, source (account) label, and location when set.
@@ -209,7 +211,7 @@ A plain left click on an event title opens a bottom-sheet overlay inside the pan
 `onRsvpChange` is an optional prop on `CalendarPane`. The host does the write; the package makes no Google request for it and asks for no new OAuth scopes. Recurring events are handled per instance: the `event` passed to the host is the instance the user opened.
 
 - The row is a radiogroup labeled "Change RSVP" with three options: Yes (accepted), Maybe (tentative), and No (declined). Unaccepted is not offered. Each option is a radio with `aria-checked`. Arrow keys move between options. The row shows only when the prop is set, you are an attendee, and the event has attendees.
-- Choosing an option calls `onRsvpChange(event, status)` once. Choosing the already selected option still calls it, so a host can rely on one call per click.
+- Choosing an option only selects it; nothing is written. A "Note to organizer (optional)" input (max 500 chars) and a Send button appear. Send calls `onRsvpChange(event, status, note)` once; `note` is trimmed, or `undefined` when empty. Re-clicking the saved status or pressing Escape in the note field cancels the draft (Escape does not close the overlay). Retry resends status and note. Pass the note to Google as `attendees[].comment` with `sendUpdates`; only the organizer sees it.
 - Optimistic update: the overlay and the event card show the new status at once. The options are disabled while the write is pending, and a live region reads "Updating RSVP...".
 - Success: the override stays until a controller refresh delivers that event, so the server's status takes over then. If the new status is hidden by the RSVP filter chips, the overlay stays open, and the card leaves the list only after the overlay closes. Changing filter chips still closes the overlay, as before.
 - Failure: if the promise rejects or throws, or does not settle within **60 seconds** (`RSVP_PENDING_TIMEOUT_MS = 60000`), the previous status comes back and the live region shows "Couldn't update RSVP. Retry". Retry sends the last chosen status again. A result that arrives after the timeout is ignored. The timer is not cleared by closing the overlay, so a timed-out write still rolls back. In that case no error message shows, because the overlay is closed.
@@ -333,6 +335,13 @@ The `--calendar-footer-height` variable is the one host value the overlay reads.
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.15.0 (minor, additive, non-breaking)
+
+- `onRsvpChange` gains an optional third argument `note?: string`.
+- Overlay RSVP is now select, optional note, then Send. Selecting alone no longer calls the host.
+- The overlay top row no longer shows the RSVP glyph (status tint and Join colors remain).
+- Update hosts that relied on one call per click: the call now happens on Send.
 
 ## 0.14.2 (patch)
 

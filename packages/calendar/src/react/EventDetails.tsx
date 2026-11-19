@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { CalendarEvent, CalendarInfo, RsvpStatus } from '../core/types.js';
 import { getOrganizerLabel } from '../core/events.js';
-import { RSVP_CHIPS, RsvpGlyph, RsvpStatusIcon, formatTimeRange } from './CalendarPane.js';
+import { RSVP_CHIPS, RsvpStatusIcon, formatTimeRange } from './CalendarPane.js';
 import { htmlToPlainText, linkifyText } from './detailsText.js';
 import { sortInvitees, summarizeInvitees } from './inviteeUtils.js';
 
@@ -11,7 +11,7 @@ export interface EventDetailsProps {
   sourceLabel: string;
   onClose: () => void;
   onOpenLink: (url: string) => void;
-  onRsvpChange?: (event: CalendarEvent, status: RsvpStatus) => void | Promise<void>;
+  onRsvpChange?: (event: CalendarEvent, status: RsvpStatus, note?: string) => void | Promise<void>;
   pending?: boolean;
   error?: boolean | string;
   onRetry?: () => void;
@@ -32,8 +32,20 @@ function rsvpOf(status: string) {
 
 export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink, onRsvpChange, pending, error, onRetry }: EventDetailsProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const lastStatus = useRef<RsvpStatus | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [selected, setSelected] = useState<RsvpStatus | null>(null);
+  const [note, setNote] = useState('');
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (pending) wasPending.current = true;
+    else if (wasPending.current) {
+      wasPending.current = false;
+      if (!error) {
+        setSelected(null);
+        setNote('');
+      }
+    }
+  }, [pending, error]);
   useEffect(() => {
     sheetRef.current?.focus();
   }, []);
@@ -50,14 +62,23 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
   const visible = expanded ? sorted : sorted.slice(0, MAX_INVITEES);
 
   function choose(status: RsvpStatus) {
-    if (pending || !onRsvpChange) return;
-    lastStatus.current = status;
-    void onRsvpChange(event, status);
+    if (pending) return;
+    if (status === event.selfResponseStatus || status === selected) {
+      setSelected(null);
+      setNote('');
+      return;
+    }
+    setSelected(status);
+  }
+
+  function send() {
+    if (pending || !onRsvpChange || !selected) return;
+    void onRsvpChange(event, selected, note.trim() || undefined);
   }
 
   function retry() {
     if (onRetry) onRetry();
-    else if (lastStatus.current) choose(lastStatus.current);
+    else send();
   }
 
   function onRadioKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
@@ -116,7 +137,6 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
                 Join
               </a>
             )}
-            <RsvpStatusIcon status={event.selfResponseStatus} />
             <button type="button" className="calendar-event-details-close" aria-label="Close" onClick={onClose}>
               ×
             </button>
@@ -186,8 +206,8 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
                     key={o.status}
                     type="button"
                     role="radio"
-                    aria-checked={event.selfResponseStatus === o.status}
-                    tabIndex={o.status === checkedStatus ? 0 : -1}
+                    aria-checked={(selected ?? event.selfResponseStatus) === o.status}
+                    tabIndex={o.status === (selected ?? checkedStatus) ? 0 : -1}
                     disabled={!!pending}
                     onClick={() => choose(o.status)}
                     onKeyDown={onRadioKeyDown}
@@ -196,6 +216,34 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
                   </button>
                 ))}
               </div>
+              {selected && (
+                <div className="calendar-event-details-rsvp-note">
+                  <label>
+                    <span className="calendar-event-details-rsvp-note-label">Note to organizer (optional)</span>
+                    <input
+                      type="text"
+                      maxLength={500}
+                      value={note}
+                      disabled={!!pending}
+                      onChange={(e) => setNote(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.stopPropagation();
+                          setSelected(null);
+                          setNote('');
+                          sheetRef.current?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')?.focus();
+                        } else if (e.key === 'Enter') {
+                          e.preventDefault();
+                          send();
+                        }
+                      }}
+                    />
+                  </label>
+                  <button type="button" className="calendar-event-details-rsvp-send" disabled={!!pending} onClick={send}>
+                    Send
+                  </button>
+                </div>
+              )}
               <div aria-live="polite" className="calendar-event-details-rsvp-status">
                 {pending ? (
                   'Updating RSVP...'

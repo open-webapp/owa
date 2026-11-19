@@ -1,0 +1,1 @@
+{ "$schema": "../../node_modules/oxlint/configuration_schema.json", "categories": { "correctness": "error" }, "rules": { "typescript/unbound-method": "off", "typescript/no-redundant-type-constituents": "off", "typescript/require-array-sort-compare": "off", "no-unused-vars": "warn" }, "ignorePatterns": ["dist"] }

@@ -66,8 +66,10 @@ export interface CalendarPaneProps {
   /**
    * Optional host-provided RSVP writer. When present, the event details overlay shows a
    * "Change RSVP" row. The package never writes to Google itself; the host performs the write.
+   * `comment` is the optional trimmed note to the organizer (omitted when empty); hosts may pass it
+   * to Google `attendees[].comment`.
    */
-  onRsvpChange?: (event: CalendarEvent, status: RsvpStatus) => Promise<void>;
+  onRsvpChange?: (event: CalendarEvent, status: RsvpStatus, comment?: string) => Promise<void>;
 }
 
 export const RSVP_PENDING_TIMEOUT_MS = 60000;
@@ -258,7 +260,7 @@ export function CalendarPane(props: CalendarPaneProps) {
     setRsvpError(false);
   }, [detailKey]);
 
-  function handleRsvpChange(_event: CalendarEvent, status: RsvpStatus) {
+  function handleRsvpChange(_event: CalendarEvent, status: RsvpStatus, comment?: string) {
     const onRsvpChange = props.onRsvpChange;
     const raw = detail?.snapshot;
     if (!onRsvpChange || !raw || rsvpPendingRef.current) return;
@@ -291,7 +293,7 @@ export function CalendarPane(props: CalendarPaneProps) {
     rsvpTimerRef.current = setTimeout(() => finish(false), RSVP_PENDING_TIMEOUT_MS);
     let p: Promise<void>;
     try {
-      p = Promise.resolve(onRsvpChange(raw, status));
+      p = Promise.resolve(onRsvpChange(raw, status, comment));
     } catch {
       p = Promise.reject(new Error('rsvp failed'));
     }

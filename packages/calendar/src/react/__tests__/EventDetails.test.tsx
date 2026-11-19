@@ -57,12 +57,12 @@ describe('EventDetails', () => {
     expect(dialog.querySelector('.calendar-event-details-organizer')?.textContent).toContain('(you)');
   });
 
-  it('top-row status is neither radio nor button', () => {
+  it('top row has no status glyph but keeps the rsvp class and Join', () => {
     setup();
-    const status = within(document.querySelector('.calendar-event-details-toprow') as HTMLElement).getByRole('img', { name: 'accepted' });
-    expect(status.closest('.calendar-event-details-toprow')).not.toBeNull();
-    expect(status).toHaveClass('calendar-event-rsvp', 'calendar-event-rsvp--accepted');
-    expect(status.closest('[role="radio"],button')).toBeNull();
+    const row = document.querySelector('.calendar-event-details-toprow') as HTMLElement;
+    expect(row.querySelector('.calendar-event-rsvp')).toBeNull();
+    expect(row).toHaveClass('calendar-event-row--rsvp-accepted');
+    expect(row.querySelector('a.calendar-event-join')).not.toBeNull();
   });
 
   it('top row mirrors the event card markup (header, time, actions, join class)', () => {
@@ -128,24 +128,123 @@ describe('EventDetails', () => {
   });
 
   describe('Change RSVP', () => {
-    it('click Maybe calls handler once; current is checked', async () => {
+    const note = () => screen.queryByLabelText('Note to organizer (optional)') as HTMLInputElement | null;
+    const send = () => screen.queryByRole('button', { name: 'Send' });
+    const pick = (n: string) => userEvent.click(screen.getByRole('radio', { name: n }));
+
+    it('click Maybe only selects: no call, note + Send appear; current is checked first', async () => {
       const onRsvpChange = vi.fn();
       setup({ attendees: four }, { onRsvpChange });
       expect(screen.getByRole('radiogroup', { name: 'Change RSVP' })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: 'Yes' })).toHaveAttribute('aria-checked', 'true');
-      await userEvent.click(screen.getByRole('radio', { name: 'Maybe' }));
-      expect(onRsvpChange).toHaveBeenCalledTimes(1);
-      expect(onRsvpChange.mock.calls[0][1]).toBe('tentative');
+      expect(note()).toBeNull();
+      await pick('Maybe');
+      expect(onRsvpChange).not.toHaveBeenCalled();
+      expect(note()).not.toBeNull();
+      expect(send()).not.toBeNull();
+      expect(screen.getByRole('radio', { name: 'Maybe' })).toHaveAttribute('aria-checked', 'true');
       expect(screen.queryByRole('radio', { name: /unaccepted|awaiting/i })).toBeNull();
     });
 
-    it('pending disables radios and shows live text', async () => {
+    it('Send writes once with status and note', async () => {
       const onRsvpChange = vi.fn();
-      setup({ attendees: four }, { onRsvpChange, pending: true });
-      screen.getAllByRole('radio').forEach((r) => expect(r).toBeDisabled());
-      expect(screen.getByText('Updating RSVP...')).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('radio', { name: 'No' }));
+      setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      await userEvent.type(note()!, 'late 10m');
+      await userEvent.click(send()!);
+      expect(onRsvpChange).toHaveBeenCalledTimes(1);
+      expect(onRsvpChange.mock.calls[0][1]).toBe('tentative');
+      expect(onRsvpChange.mock.calls[0][2]).toBe('late 10m');
+    });
+
+    it('note is trimmed; empty or whitespace-only becomes undefined', async () => {
+      const onRsvpChange = vi.fn();
+      setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      await userEvent.click(send()!);
+      expect(onRsvpChange.mock.calls[0][2]).toBeUndefined();
+      await userEvent.type(note()!, '  hi  ');
+      await userEvent.click(send()!);
+      expect(onRsvpChange.mock.calls[1][2]).toBe('hi');
+      await userEvent.clear(note()!);
+      await userEvent.type(note()!, '   ');
+      await userEvent.click(send()!);
+      expect(onRsvpChange.mock.calls[2][2]).toBeUndefined();
+    });
+
+    it('switching status keeps the typed note', async () => {
+      const onRsvpChange = vi.fn();
+      setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      await userEvent.type(note()!, 'hello');
+      await pick('No');
+      expect(note()!.value).toBe('hello');
+      await userEvent.click(send()!);
+      expect(onRsvpChange.mock.calls[0].slice(1)).toEqual(['declined', 'hello']);
+    });
+
+    it('re-clicking the saved status cancels the draft', async () => {
+      const onRsvpChange = vi.fn();
+      setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      await pick('Yes');
+      expect(note()).toBeNull();
+      expect(send()).toBeNull();
       expect(onRsvpChange).not.toHaveBeenCalled();
+    });
+
+    it('Escape in the note field cancels without closing; Escape elsewhere closes', async () => {
+      const onRsvpChange = vi.fn();
+      const { onClose } = setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      note()!.focus();
+      await userEvent.keyboard('{Escape}');
+      expect(note()).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onRsvpChange).not.toHaveBeenCalled();
+      await userEvent.keyboard('{Escape}');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('note input is single-line with maxLength 500', async () => {
+      setup({ attendees: four }, { onRsvpChange: vi.fn() });
+      await pick('Maybe');
+      expect(note()).toHaveAttribute('maxlength', '500');
+      expect(note()!.tagName).toBe('INPUT');
+    });
+
+    it('pending disables radios and Send and shows live text', async () => {
+      const onRsvpChange = vi.fn();
+      const { rerender, onClose, onOpenLink, container } = setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      const event = makeEvent({ attendees: four, joinUrl: 'https://meet.example.com/x' });
+      rerender(
+        <EventDetails event={event} calendar={CAL} sourceLabel="s" onClose={onClose} onOpenLink={onOpenLink} onRsvpChange={onRsvpChange} pending />,
+      );
+      expect(container).toBeTruthy();
+      screen.getAllByRole('radio').forEach((r) => expect(r).toBeDisabled());
+      expect(send()).toBeDisabled();
+      expect(screen.getByText('Updating RSVP...')).toBeInTheDocument();
+      await userEvent.click(send()!);
+      expect(onRsvpChange).not.toHaveBeenCalled();
+    });
+
+    it('success (pending then not pending, no error) hides note + Send and clears the draft', async () => {
+      const onRsvpChange = vi.fn();
+      const { rerender, onClose, onOpenLink } = setup({ attendees: four }, { onRsvpChange });
+      await pick('Maybe');
+      await userEvent.type(note()!, 'x');
+      await userEvent.click(send()!);
+      const ev = (st: string) => makeEvent({ attendees: four, selfResponseStatus: st as never });
+      const r = (e: ReturnType<typeof ev>, pending: boolean) =>
+        rerender(<EventDetails event={e} calendar={CAL} sourceLabel="s" onClose={onClose} onOpenLink={onOpenLink} onRsvpChange={onRsvpChange} pending={pending} />);
+      r(ev('tentative'), true);
+      r(ev('tentative'), false);
+      expect(note()).toBeNull();
+      expect(send()).toBeNull();
+      expect(screen.getByRole('radio', { name: 'Maybe' })).toHaveAttribute('aria-checked', 'true');
+      await pick('No');
+      expect(note()!.value).toBe('');
     });
 
     it('hidden without handler or when not invited', () => {
@@ -154,6 +253,11 @@ describe('EventDetails', () => {
       unmount();
       setup({ attendees: four.slice(1) }, { onRsvpChange: vi.fn() });
       expect(screen.queryByRole('radiogroup')).toBeNull();
+    });
+
+    it('invitee rows keep glyphs', () => {
+      setup({ attendees: four }, { onRsvpChange: vi.fn() });
+      expect(screen.getAllByRole('listitem')[0].querySelector('.calendar-event-rsvp')).not.toBeNull();
     });
 
     it('arrows move focus; Esc closes', async () => {
@@ -167,18 +271,21 @@ describe('EventDetails', () => {
       expect(onClose).toHaveBeenCalled();
     });
 
-    it('error shows exact text; Retry re-runs last status', async () => {
+    it('error shows exact text, keeps draft; Retry resends same status + note', async () => {
       const onRsvpChange = vi.fn();
       const { rerender, onClose, onOpenLink } = setup({ attendees: four }, { onRsvpChange });
-      await userEvent.click(screen.getByRole('radio', { name: 'No' }));
+      await pick('No');
+      await userEvent.type(note()!, 'sick');
+      await userEvent.click(send()!);
       const event = onRsvpChange.mock.calls[0][0];
       rerender(
         <EventDetails event={event} calendar={CAL} sourceLabel="me@example.com" onClose={onClose} onOpenLink={onOpenLink} onRsvpChange={onRsvpChange} error />,
       );
       expect(screen.getByText(/Couldn't update RSVP\./).parentElement?.textContent).toBe("Couldn't update RSVP. Retry");
+      expect(note()!.value).toBe('sick');
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(onRsvpChange).toHaveBeenCalledTimes(2);
-      expect(onRsvpChange.mock.calls[1][1]).toBe('declined');
+      expect(onRsvpChange.mock.calls[1].slice(1)).toEqual(['declined', 'sick']);
     });
   });
 
