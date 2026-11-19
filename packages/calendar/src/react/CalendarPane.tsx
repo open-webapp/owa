@@ -103,7 +103,7 @@ export function RsvpGlyph({ path, size = 16, strokeWidth = 2.2 }: { path: string
   );
 }
 
-function RsvpStatusIcon({ status }: { status: CalendarEvent['selfResponseStatus'] }) {
+export function RsvpStatusIcon({ status }: { status: CalendarEvent['selfResponseStatus'] }) {
   const glyph = RSVP_CHIPS.find((chip) => chip.status === status) ?? RSVP_CHIPS[3];
   return (
     <span className={`calendar-event-rsvp calendar-event-rsvp--${glyph.status}`} role="img" aria-label={glyph.status} title={glyph.status}>
