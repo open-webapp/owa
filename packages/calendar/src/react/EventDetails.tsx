@@ -15,6 +15,7 @@ export interface EventDetailsProps {
   pending?: boolean;
   error?: boolean | string;
   onRetry?: () => void;
+  resolveContact?: (email: string) => { name?: string; photoUrl?: string } | undefined;
 }
 
 const RSVP_OPTIONS: { status: RsvpStatus; label: string }[] = [
@@ -30,7 +31,7 @@ function rsvpOf(status: string) {
   return RSVP_CHIPS.find((c) => c.status === status) ?? RSVP_CHIPS[3];
 }
 
-export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink, onRsvpChange, pending, error, onRetry }: EventDetailsProps) {
+export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink, onRsvpChange, pending, error, onRetry, resolveContact }: EventDetailsProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<RsvpStatus | null>(null);
@@ -51,7 +52,7 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
   }, []);
 
   const time = event.isAllDay ? 'All day' : formatTimeRange(event);
-  const organizer = getOrganizerLabel(event);
+  const organizer = getOrganizerLabel(event, resolveContact);
   const description = htmlToPlainText(event.description);
   const attendees = event.attendees ?? [];
   const onlySelf = attendees.length === 1 && !!attendees[0].self;
@@ -182,14 +183,20 @@ export function EventDetails({ event, calendar, sourceLabel, onClose, onOpenLink
               <h3>Invitees ({attendees.length})</h3>
               <div className="calendar-event-details-invitee-summary">{summarizeInvitees(attendees)}</div>
               <ul>
-                {visible.map((a, i) => (
+                {visible.map((a, i) => {
+                  const contact = resolveContact && a.email ? resolveContact(a.email) : undefined;
+                  return (
                   <li key={`${a.email}-${i}`}>
-                    <span>{a.displayName || a.email}</span>
+                    {contact?.photoUrl && (
+                      <img className="calendar-event-details-avatar" src={contact.photoUrl} alt="" width={20} height={20} />
+                    )}
+                    <span>{contact?.name || a.displayName || a.email}</span>
                     {a.organizer && <span className="calendar-event-details-tag"> Organizer</span>}
                     {a.self && <span className="calendar-event-details-tag"> (you)</span>}{' '}
                     <RsvpStatusIcon status={a.responseStatus as CalendarEvent['selfResponseStatus']} />
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               {sorted.length > MAX_INVITEES && (
                 <button type="button" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>

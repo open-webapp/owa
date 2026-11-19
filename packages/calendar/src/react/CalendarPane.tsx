@@ -46,6 +46,11 @@ function nextRsvpSelection(
 const SOURCE_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#a142f4', '#00acc1', '#ff7043', '#8d6e63'];
 
 export interface CalendarPaneProps {
+  /**
+   * Optional host lookup by attendee/organizer email (as given by the event). A returned `name` wins
+   * over the event displayName; an avatar renders only when `photoUrl` is returned. Absent = unchanged.
+   */
+  resolveContact?: (email: string) => { name?: string; photoUrl?: string } | undefined;
   theme?: 'system' | 'light' | 'dark';
   sources: Source[];
   controller: CalendarController;
@@ -719,7 +724,7 @@ export function CalendarPane(props: CalendarPaneProps) {
                 const eventKey = getCalendarEventKey(event);
                 const calendar = calendarsByKey.get(`${event.sourceId}\u0000${event.calendarId}`);
                 const showCalendarLabel = calendar && !calendar.primary;
-                const organizerLabel = getOrganizerLabel(event);
+                const organizerLabel = getOrganizerLabel(event, props.resolveContact);
                 const showOrganizerLabel = multi
                   ? true
                   : organizerLabel && (!showCalendarLabel || organizerLabel !== calendar.summary);
@@ -856,6 +861,7 @@ export function CalendarPane(props: CalendarPaneProps) {
             return o ? { ...detail.snapshot, selfResponseStatus: o } : detail.snapshot;
           })()}
           onRsvpChange={props.onRsvpChange ? handleRsvpChange : undefined}
+          resolveContact={props.resolveContact}
           pending={rsvpPending}
           error={rsvpError}
           calendar={calendarsByKey.get(`${detail.snapshot.sourceId}\u0000${detail.snapshot.calendarId}`)}
