@@ -1,53 +1,40 @@
 # Claude Code Rules
 
-## Auto-committing package changes
-
-When you modify files under `packages/drive-sync`, `packages/project-sync`, `packages/drive-connect`, `packages/calendar`, `packages/notes-core`, or `packages/contacts` as part of a task, commit those changes without waiting to be asked. Branch off `main`, commit with a descriptive message, run the affected package's tests and `scripts/check-contracts.sh` locally, push the branch, and open a PR against `main`. Do NOT merge to `main` locally or push to `main` directly.
-
-### PR checks gate merging
-
-After opening (or updating) a PR, wait for its checks to finish: poll `gh pr checks <pr>` (e.g. every 30-60s) until none are pending.
-- **All checks pass:** merge the PR (`gh pr merge <pr> --merge`), update local `main`, then follow the auto-tagging rule below (tag the merge commit and push the tag), and clean up the branch/worktree.
-- **Any check fails (or none ever report):** do NOT merge or tag. Report to the user which check failed, with the relevant log lines (`gh run view --log-failed`), and stop for their direction.
-- Never merge with failing, pending, or skipped required checks, and never bypass or disable a check to get green.
-
-This is a standing instruction: treat "the change is made" as "commit, open PR, wait for checks, merge, tag, and push" for these six packages. Changes that touch no package (e.g. CI only) follow the same PR flow but need no tag.
-
 ## Auto-tagging on commit
 
-When committing changes to `packages/drive-sync`, `packages/project-sync`, `packages/drive-connect`, `packages/calendar`, `packages/notes-core`, or `packages/contacts`, automatically create and push a git tag matching the corresponding version pattern to trigger the publish workflow.
+When changes to `packages/drive-sync`, `packages/project-sync`, `packages/drive-connect`, `packages/calendar`, `packages/notes-core`, or `packages/contacts` land on `main`, automatically create and push a git tag on the commit that landed on `main` matching the corresponding version pattern to trigger the publish workflow.
 
-**For drive-sync:** After creating a commit to `packages/drive-sync`, extract the version from `packages/drive-sync/package.json` and run:
+**For drive-sync:** After changes to `packages/drive-sync` land on `main`, extract the version from `packages/drive-sync/package.json` and run:
 ```bash
 git tag drive-sync-v<version>
 git push origin drive-sync-v<version>
 ```
 
-**For project-sync:** After creating a commit to `packages/project-sync`, extract the version from `packages/project-sync/package.json` and run:
+**For project-sync:** After changes to `packages/project-sync` land on `main`, extract the version from `packages/project-sync/package.json` and run:
 ```bash
 git tag project-sync-v<version>
 git push origin project-sync-v<version>
 ```
 
-**For drive-connect:** After creating a commit to `packages/drive-connect`, extract the version from `packages/drive-connect/package.json` and run:
+**For drive-connect:** After changes to `packages/drive-connect` land on `main`, extract the version from `packages/drive-connect/package.json` and run:
 ```bash
 git tag drive-connect-v<version>
 git push origin drive-connect-v<version>
 ```
 
-**For calendar:** After creating a commit to `packages/calendar`, extract the version from `packages/calendar/package.json` and run:
+**For calendar:** After changes to `packages/calendar` land on `main`, extract the version from `packages/calendar/package.json` and run:
 ```bash
 git tag calendar-v<version>
 git push origin calendar-v<version>
 ```
 
-**For notes-core:** After creating a commit to `packages/notes-core`, extract the version from `packages/notes-core/package.json` and run:
+**For notes-core:** After changes to `packages/notes-core` land on `main`, extract the version from `packages/notes-core/package.json` and run:
 ```bash
 git tag notes-core-v<version>
 git push origin notes-core-v<version>
 ```
 
-**For contacts:** After creating a commit to `packages/contacts`, extract the version from `packages/contacts/package.json` and run:
+**For contacts:** After changes to `packages/contacts` land on `main`, extract the version from `packages/contacts/package.json` and run:
 ```bash
 git tag contacts-v<version>
 git push origin contacts-v<version>
