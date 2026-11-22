@@ -108,7 +108,7 @@ describe('controller.loadDay', () => {
   it('keeps successful sources when another source fails', async () => {
     const { controller, fetchMock } = setup(['a', 'b']);
     fetchMock.mockImplementation(async (_url, init) => {
-      if ((init?.headers as Record<string, string>).Authorization === 'Bearer a') throw new Error('offline');
+      if ((init!.headers as Record<string, string>).Authorization === 'Bearer a') throw new Error('offline');
       return response({ items: [raw()] });
     });
     await expect(controller.loadDay('2026-06-01')).resolves.toBeUndefined();

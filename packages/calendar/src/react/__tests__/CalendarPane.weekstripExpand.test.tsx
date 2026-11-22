@@ -19,7 +19,7 @@ const handle = () => host.querySelector<HTMLButtonElement>('.calendar-weekstrip-
 const viewport = () => host.querySelector<HTMLElement>('.calendar-weekstrip-weeks')!;
 function click() { act(() => handle().click()); }
 function pointer(type: string, y: number) {
-  act(() => handle().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientY: y })));
+  act(() => { handle().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientY: y })); });
 }
 
 it('defaults collapsed on each mount and toggles by click, Enter and Space', () => {
@@ -28,7 +28,7 @@ it('defaults collapsed on each mount and toggles by click, Enter and Space', () 
   click();
   expect(handle().getAttribute('aria-expanded')).toBe('true');
   for (const key of ['Enter', ' ']) {
-    act(() => handle().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })));
+    act(() => { handle().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
     expect(handle().getAttribute('aria-expanded')).toBe(key === 'Enter' ? 'false' : 'true');
   }
   act(() => root.unmount()); host.remove();
