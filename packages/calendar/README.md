@@ -2,6 +2,8 @@
 
 Multi-account Google Calendar read-only sync (controller) plus React UI (`CalendarPane`, `CalendarSelector`). Storage and encryption are host-supplied adapters.
 
+> **0.17.0 is additive and non-breaking.** The controller can load individual days, and CalendarPane adds a week strip and rendered close control. See [0.17.0](#0170-minor-additive-non-breaking).
+>
 > **0.16.0 is additive and non-breaking.** New optional `resolveContact` prop supplies contact names and avatars in the event details overlay. See [0.16.0](#0160-minor-additive-non-breaking).
 
 > **0.15.0 is additive and non-breaking.** RSVP changes in the overlay now take an optional note and are sent with a Send button; `onRsvpChange` gets an optional third `note` argument. See [0.15.0](#0150-minor-additive-non-breaking).
@@ -65,6 +67,7 @@ void controller.refresh();   // then syncs from Google
 - `hydrate(): Promise<void>` loads the stored rows and publishes cached events before any network call. Never throws. Offline, the cache stays visible.
 - `refresh(): Promise<void>` syncs every source in parallel; never throws.
 - `retryDeferred(): Promise<void>` re-runs a refresh after a deferred pass (see [Deferred refresh](#deferred-refresh)).
+- `loadDay(dateKey): Promise<void>` synchronizes the requested day into the current snapshot. It is additive to the rolling sync window: loaded extra days are kept in memory for the current controller lifetime and are not persisted.
 - `getEvents(): CalendarEvent[]` stable snapshot (updated on `hydrate`/`refresh`/`setSelectedIds`/`clearSelectedIds`), sources concatenated in `sources` order. Only events that pass the read-time filter are returned (see [Window](#window)).
 - `getState(): { loading, error, deferred, lastSyncAt }`:
   - `loading`: a refresh pass is in flight.
@@ -167,7 +170,7 @@ Call at top level of a vitest file; it registers a `describe('StorageAdapter con
 | `onReconnect?` | `() => void` | wired to the built-in "Reconnect to restore sync" button |
 | `emptyState?` | `ReactNode` | replaces the built-in not-connected block |
 | `sourceNotice?` | `(source) => ReactNode` | per-source slot, rendered for `needs-scope` sources (e.g. re-consent button); without it the built-in reauth block is shown |
-| `onClose?` | `() => void` | |
+| `onClose?` | `() => void` | When provided, renders the pane close control and calls the host callback. |
 | `popupName?` | `string` | `window.open` name for the event popup window (default `notesdiary-cal-event`). The popup now opens only from the overlay's "Open in Google Calendar" link |
 | `resolveContact?` | `(email: string) => { name?: string; photoUrl?: string } \| undefined` | 0.16.0. Contact lookup for overlay invitee and organizer rows and list-row organizer labels: `name` beats `displayName`; avatar only when `photoUrl`, overlay only. Absent = unchanged. No dependency on contacts. |
 | `onRsvpChange?` | `(event: CalendarEvent, status: RsvpStatus, note?: string) => Promise<void>` | 0.14.0 (`note` added in 0.15.0). Host-owned RSVP writer. When absent, the overlay has no "Change RSVP" row. The package never writes to Google itself. See [Change RSVP](#change-rsvp-onrsvpchange) |
@@ -327,6 +330,8 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
+Week-strip hooks: `.calendar-week-strip` wraps the strip, `.calendar-week-strip-day` is each day button, and `.calendar-week-strip-day--active` marks the active day. The active day reuses the component's existing active/focus palette tokens, so hosts can style the strip through those scoped tokens without adding separate theme state.
+
 The Unaccepted count badge uses `.calendar-rsvp-chip-badge`, with light and dark styling included in `styles.css`.
 
 Event details overlay (0.13.0, footer-safe and redesigned in 0.14.0): `.calendar-event-details` is the backdrop (absolutely positioned inside the pane root, dimmed, bottom-aligned). In a pane with a footer, `.calendar-pane--has-footer > .calendar-event-details` sets `bottom: var(--calendar-footer-height)` so the footer is not covered. `.calendar-event-details-sheet` is the bottom sheet (max 80% of the area above the footer, scrolls internally). Both use the pane's palette tokens, so they follow the pane's `theme`. The overlay is positioned against the nearest positioned ancestor, so the pane root must stay positioned.
@@ -338,6 +343,12 @@ The `--calendar-footer-height` variable is the one host value the overlay reads.
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.17.0 (minor, additive, non-breaking)
+
+- `CalendarController.loadDay(dateKey)` synchronizes a requested day in addition to the normal rolling sync window. Extra-day results are in-memory only: they are not written to storage or retained after a new controller is created.
+- `CalendarPane` now renders a week strip. Its active day uses the existing active-token highlight, and `.calendar-week-strip`, `.calendar-week-strip-day`, and `.calendar-week-strip-day--active` are available as host CSS hooks.
+- `CalendarPane` now renders its close control when `onClose` is supplied; activating it calls `onClose`.
 
 ## 0.16.0 (minor, additive, non-breaking)
 

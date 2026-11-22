@@ -31,6 +31,7 @@ export interface FakeControllerOptions {
   calendars?: Record<string, CalendarInfo[]>;
   selected?: Record<string, string[]>;
   state?: Partial<CalendarControllerState>;
+  loadDay?: CalendarController['loadDay'];
 }
 
 /**
@@ -61,6 +62,7 @@ export function createFakeController(opts: FakeControllerOptions): CalendarContr
     retryDeferred: vi.fn(async () => {}),
     getState: () => state,
     refresh: vi.fn(async () => {}),
+    ...(opts.loadDay ? { loadDay: vi.fn(opts.loadDay) } : {}),
     getEvents: () => events,
     getSourceStatus: () => status,
     get sourceStatus() {

@@ -14,6 +14,7 @@ import {
 } from '../core/events.js';
 import { GroupedCalendarSelector } from './CalendarSelector.js';
 import { EventDetails } from './EventDetails.js';
+import { WeekStrip } from './WeekStrip.js';
 
 export type RsvpSelection = Set<RsvpStatus>;
 
@@ -246,6 +247,7 @@ export function CalendarPane(props: CalendarPaneProps) {
   const sourceColor = (id: string) => SOURCE_COLORS[Math.max(0, sources.findIndex((s) => s.id === id)) % SOURCE_COLORS.length];
   const sourceEmail = (id: string) => sources.find((s) => s.id === id)?.email ?? '';
   const todayIso = toIsoDate(new Date());
+  const [selectedDay, setSelectedDay] = useState(todayIso);
   const dayHeaderRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const timedEventRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const hasScrolledForEventsRef = useRef(false);
@@ -322,6 +324,14 @@ export function CalendarPane(props: CalendarPaneProps) {
     .map((s) => `${s.id}:${[...controller.getSelectedIds(s.id)].sort().join(',')}`)
     .join('|');
   const rsvpSignature = [...selectedRsvpStatuses].sort().join(',');
+  const [loadingDay, setLoadingDay] = useState<string | null>(null);
+  const dayLoadRef = useRef<object | null>(null);
+  const [loadedDay, setLoadedDay] = useState<string | null>(null);
+  useEffect(() => {
+    setLoadingDay(null);
+    setLoadedDay(null);
+    return () => { dayLoadRef.current = null; };
+  }, [controller, selectionSignature, rsvpSignature]);
   const didMountFilterRef = useRef(false);
   useEffect(() => {
     if (!didMountFilterRef.current) {
@@ -453,6 +463,52 @@ export function CalendarPane(props: CalendarPaneProps) {
     props.onRsvpStatusesChange(selection.next);
   }
   const dayGroups = groupByDay(filteredEvents, todayIso);
+  const eventDays = new Set(dayGroups.filter((group) => group.events.length > 0).map((group) => group.dateKey));
+
+  useLayoutEffect(() => {
+    if (!loadedDay) return;
+    setLoadedDay(null);
+    if (!eventDays.has(loadedDay)) return;
+    setSelectedDay(loadedDay);
+    dayHeaderRefs.current.get(loadedDay)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [loadedDay, eventDays]);
+
+  function selectDay(dateKey: string) {
+    const today = new Date();
+    const min = toIsoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30));
+    const max = toIsoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30));
+    if (!eventDays.has(dateKey) && (dateKey < min || dateKey > max) && typeof controller.loadDay === 'function') {
+      if (dayLoadRef.current) return;
+      const request = {};
+      dayLoadRef.current = request;
+      setLoadingDay(dateKey);
+      const finish = (ok: boolean) => {
+        if (!mountedRef.current || dayLoadRef.current !== request) return;
+        dayLoadRef.current = null;
+        setLoadingDay(null);
+        if (ok) {
+          // Re-read controller truth even when legacy subscriptions do not emit.
+          setVersion((v) => v + 1);
+          setLoadedDay(dateKey);
+        }
+      };
+      try {
+        Promise.resolve(controller.loadDay(dateKey)).then(() => finish(true), () => finish(false));
+      } catch {
+        finish(false);
+      }
+      return;
+    }
+    const days = [...eventDays].sort();
+    const target = eventDays.has(dateKey) ? dateKey :
+      days.find((day) => day > dateKey) ?? days.reverse().find((day) => day < dateKey);
+    if (!target) return;
+    setSelectedDay(target);
+    const header = dayHeaderRefs.current.get(target);
+    if (header && typeof header.scrollIntoView === 'function') {
+      header.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 
   function scrollToToday(behavior: ScrollBehavior = 'auto') {
     const todayEl = dayHeaderRefs.current.get(todayIso);
@@ -677,11 +733,18 @@ export function CalendarPane(props: CalendarPaneProps) {
           className="calendar-today-btn"
           aria-label="Scroll to today"
           title="Scroll to today"
-          onClick={() => recenter('smooth')}
+           onClick={() => { setSelectedDay(todayIso); recenter('smooth'); }}
         >
           Today
         </button>
+        {props.onClose && (
+          <button type="button" className="calendar-close-btn" aria-label="Close" onClick={props.onClose}>
+            ×
+          </button>
+        )}
       </div>
+
+      <WeekStrip today={new Date()} selected={selectedDay} eventDays={eventDays} loading={ctrlState.loading} loadingDay={loadingDay} onSelect={selectDay} />
 
       {needsScopeSources.map((s) => (
         <div key={s.id}>{props.sourceNotice?.(s)}</div>
