@@ -406,7 +406,7 @@ for (const os of ['light', 'dark'] as const) for (const theme of modes) {
     expect(host.querySelectorAll('#pane [role=combobox]')).toHaveLength(1);
     expect(host.querySelectorAll('#pane [role=searchbox]')).toHaveLength(1);
     expect(el('#pane [role=group][aria-label="second@example.com"] [role=heading]').textContent).toBe('second@example.com');
-    expect(host.querySelectorAll('#pane [role=group]')).toHaveLength(3);
+    expect(host.querySelectorAll('#pane [role=group]:not(.calendar-weekstrip)')).toHaveLength(3);
     expect(host.querySelectorAll('#pane .calendar-selector [role=group]')).toHaveLength(2);
     for (const group of host.querySelectorAll('#pane .calendar-selector [role=group]')) {
       expect(Array.from(group.querySelectorAll('.calendar-selector-actions button'), button => button.textContent)).toEqual(['Select all', 'Clear']);
@@ -602,7 +602,7 @@ for (const width of [360, 1000]) {
       await click('[role=combobox]');
       expect(host.querySelectorAll('[role=combobox]')).toHaveLength(1);
       expect(host.querySelectorAll('[role=searchbox]')).toHaveLength(1);
-      expect(host.querySelectorAll('[role=group]')).toHaveLength(3);
+      expect(host.querySelectorAll('[role=group]:not(.calendar-weekstrip)')).toHaveLength(3);
       expect(host.querySelectorAll('.calendar-selector [role=group]')).toHaveLength(2);
       expect(host.querySelectorAll('[role=option]')).toHaveLength(4);
       expect(el('.calendar-selector-dropdown').getBoundingClientRect().width).toBe(220);

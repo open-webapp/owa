@@ -112,3 +112,11 @@ export async function fetchEvents(
   } while (pageToken);
   return { items, nextSyncToken };
 }
+
+/** A local calendar day, including DST transitions; never participates in sync. */
+export async function fetchDayEvents(token: string, calendarId: string, dateKey: string): Promise<EventsPage> {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const start = new Date(year, month - 1, day);
+  const end = new Date(year, month - 1, day + 1);
+  return fetchEvents(token, calendarId, { timeMin: start.toISOString(), timeMax: end.toISOString() });
+}

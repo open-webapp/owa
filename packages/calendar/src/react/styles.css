@@ -238,6 +238,10 @@
 
 .calendar-today-btn {
   margin-left: auto;
+}
+
+.calendar-today-btn,
+.calendar-close-btn {
   flex-shrink: 0;
   padding: 4px 8px;
   border: 0;
@@ -251,8 +255,107 @@
   cursor: pointer;
 }
 
-.calendar-today-btn:hover {
+.calendar-today-btn:hover,
+.calendar-close-btn:hover {
   background: var(--calendar-today-hover);
+}
+
+.calendar-weekstrip {
+  padding: 0 16px 12px;
+  color: var(--calendar-card-time);
+  font-size: 11px;
+  text-align: center;
+}
+
+.calendar-weekstrip-month {
+  margin-bottom: 8px;
+  color: var(--calendar-card-title);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.calendar-weekstrip-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar-weekstrip-weeks {
+  overflow-anchor: none;
+}
+
+.calendar-weekstrip-weeks--expanded {
+  height: 264px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+}
+
+.calendar-weekstrip-week {
+  height: 44px;
+  scroll-snap-align: start;
+}
+
+.calendar-weekstrip-handle {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.calendar-weekstrip-handle:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+}
+
+.calendar-weekstrip-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+  border: 1px solid var(--calendar-card-border);
+  border-radius: 8px;
+  background: var(--calendar-card-background);
+  color: var(--calendar-card-title);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-weekstrip-day:hover {
+  background: var(--calendar-hover);
+}
+
+.calendar-weekstrip-day:focus-visible {
+  outline: 2px solid var(--calendar-focus);
+  outline-offset: 1px;
+}
+
+.calendar-weekstrip-day--outside-window {
+  opacity: 0.5;
+}
+
+.calendar-weekstrip-dot {
+  color: var(--calendar-accent);
+  line-height: 8px;
+}
+
+.calendar-weekstrip-day--loading .calendar-weekstrip-dot {
+  animation: calendar-weekstrip-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes calendar-weekstrip-pulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-weekstrip-day--loading .calendar-weekstrip-dot { animation: none; }
 }
 
 .calendar-empty-state {
@@ -503,7 +606,9 @@
 }
 
 .calendar-event-row--current,
-.calendar-event-row--selected {
+.calendar-event-row--selected,
+.calendar-weekstrip-day--today,
+.calendar-weekstrip-day--selected {
   border-color: var(--calendar-card-active-border);
   box-shadow: 0 0 0 1px var(--calendar-card-active-ring);
   background: var(--calendar-card-active-background);

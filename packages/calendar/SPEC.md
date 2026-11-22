@@ -24,6 +24,7 @@ Package exports: `.`, `./testing`, `./styles.css`.
 8. `clearSelectedIds(id)` sets the selection to the primary calendar (else first).
 9. Default selection before any refresh is primary.
 10. Pruning: on refresh, stored events whose end is strictly before now-30d are removed.
+11. `loadDay(dateKey)` synchronizes the requested day into the current snapshot. A day outside the rolling window is extra in-memory data and is never persisted.
 
 ## Deferred refresh
 
@@ -75,6 +76,7 @@ Initial: `ok` for every source.
 
 - Accepted, Maybe and Declined independently toggle current supplied membership. Unaccepted (O) is exclusive: selecting it enters O mode, and clearing it restores an internal non-persisted saved selection. Accepted, Maybe or Declined clicks exit O mode and update that independent membership. O is pressed iff needsAction is selected; unanswered events follow that membership within calendar/window filters. Defaults are accepted/tentative. Removing the last independent status returns those defaults. Explicit empty or other non-conforming host sets remain unnormalized, without callbacks on rerender.
 - Ribbon labels center in the actual intersection: top = max(ribbon top, viewport top, measured chip bottom, that day's header bottom); bottom = min(ribbon bottom, viewport bottom). Empty intersections have zero height. This covers empty Today before an event day and short ribbons, updating on scroll, resize, rendered-content and mounted theme changes.
+- CalendarPane renders a week strip. Its active day reuses the existing scoped active/focus palette-token highlight. `onClose`, when supplied, renders a close control that calls the callback. The strip hooks are `.calendar-week-strip`, `.calendar-week-strip-day`, and `.calendar-week-strip-day--active`.
 
 - Both accept `theme?: 'system' | 'light' | 'dark'`; omitted/`undefined` means `'system'`. System follows OS/browser color-scheme changes live; explicit modes ignore OS changes.
 - A mounted prop change applies without remounting or resetting dropdown open/query/focus/keyboard-active state, calendar selection or current RSVP selection, and without theme-induced callbacks or controller refreshes.
@@ -125,6 +127,8 @@ Independent semver; tag `calendar-v<version>` publishes. Breaking changes to exp
 0.9.0 is a BREAKING pre-1.0 minor for the user-approved replacement of frozen native dropdown-action appearance with flat themed Done, Select all and Clear. Other visual, interaction, API and storage contracts remain intact; no data migration is required.
 
 0.16.0 is an additive, non-breaking minor: Optional `resolveContact?: (email: string) => { name?: string; photoUrl?: string } | undefined` on `CalendarPane`: in the event details overlay, a returned `name` wins over the event `displayName` (and email) on invitee rows and the organizer row, and the organizer label in list rows resolves the same way (via `getOrganizerLabel(event, resolveContact?)`, "You" kept when `organizer.self` and nothing resolves, multi-source rows keep the `· <account email>` suffix); a 20px round avatar `img` renders only when `photoUrl` is returned, in the overlay only (list rows never render avatars). The host normalizes emails; the package passes the email as given by the event. Absent prop or `undefined` result leaves output unchanged. Calendar has no dependency on `@open-webapp/contacts`; hosts wire any lookup. No migration is required.
+
+0.17.0 is an additive, non-breaking minor: `loadDay(dateKey)` adds a requested day to the controller's current in-memory snapshot without persisting extra-day data. CalendarPane adds a week strip whose active day reuses existing active/focus palette tokens, plus a rendered `onClose` control. No migration is required.
 
 0.15.0 is an additive, non-breaking minor: `onRsvpChange` gains an optional third `note` argument, and choosing a status no longer writes until Send is pressed. The overlay top row drops the RSVP glyph. No migration is required.
 

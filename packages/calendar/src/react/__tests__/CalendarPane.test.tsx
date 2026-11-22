@@ -2082,8 +2082,8 @@ describe('CalendarPane', () => {
       render(<CalendarPane {...enabled({ events: [timed], onInsertCalendarEventLink: onInsert })} />);
       const u = user();
       const btn = screen.getByRole('button', { name: btnName('Timed Talk') });
-      await u.tab(); // scroll-today
-      for (let i = 0; i < 10 && document.activeElement !== btn; i++) await u.tab();
+      const tabbableCount = document.querySelectorAll('button, a[href], input, [tabindex]').length;
+      for (let i = 0; i < tabbableCount && document.activeElement !== btn; i++) await u.tab();
       expect(btn).toHaveFocus();
       await u.keyboard('{Enter}');
       expect(onInsert).toHaveBeenCalledTimes(1);

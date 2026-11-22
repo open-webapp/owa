@@ -1,4 +1,5 @@
-import { CalendarFetchError, fetchCalendarList, isRefreshDeferredError } from './fetch.js';
+import { CalendarFetchError, fetchCalendarList, fetchDayEvents, isRefreshDeferredError } from './fetch.js';
+import { parseEvent } from './events.js';
 import { reconcileSelection } from './reconcile.js';
 import { syncCalendar, type CalendarSyncResult } from './sync.js';
 import type { CryptoAdapter, StorageAdapter, SyncState } from './storage.js';
@@ -25,6 +26,7 @@ export interface CalendarControllerState {
 export interface CalendarController {
   hydrate(): Promise<void>;
   refresh(): Promise<void>;
+  loadDay(dateKey: string): Promise<void>;
   /** Re-runs a refresh after a deferred pass. */
   retryDeferred(): Promise<void>;
   getState(): CalendarControllerState;
@@ -57,6 +59,9 @@ export function createCalendarController(opts: CalendarControllerOptions): Calen
   const state = new Map<string, SourceState>();
   const listeners = new Set<() => void>();
   let snapshot: CalendarEvent[] = [];
+  const extraDays = new Map<string, CalendarEvent[]>();
+  let dayLoading = false;
+  let dayGeneration = 0;
   let loadingCount = 0;
   let deferred = false;
   let statusSnapshot: Record<string, SourceStatus> = {};
@@ -91,6 +96,17 @@ export function createCalendarController(opts: CalendarControllerOptions): Calen
           ms(e.start.dateTime ?? e.start.date, -Infinity) < we,
       );
     });
+    const key = (e: CalendarEvent) => JSON.stringify([e.sourceId, e.calendarId, e.id]);
+    const seen = new Set(snapshot.map(key));
+    for (const events of extraDays.values()) {
+      for (const event of events) {
+        if (event.calendarId && !state.get(event.sourceId)?.selectedIds.includes(event.calendarId)) continue;
+        const id = key(event);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        snapshot.push(event);
+      }
+    }
     statusSnapshot = Object.fromEntries(sources.map((s) => [s.id, state.get(s.id)!.status]));
     listeners.forEach((l) => l());
   }
@@ -257,7 +273,46 @@ export function createCalendarController(opts: CalendarControllerOptions): Calen
       }
       publish();
     },
-    refresh: () => runPass(),
+    refresh() {
+      extraDays.clear();
+      dayGeneration++;
+      return runPass();
+    },
+    async loadDay(dateKey) {
+      if (dayLoading) return;
+      dayLoading = true;
+      const generation = dayGeneration;
+      try {
+        const events: CalendarEvent[] = [];
+        await Promise.all(sources.map(async ({ id: sourceId }) => {
+          try {
+            await load(sourceId);
+            const token = await getToken(sourceId);
+            for (const calendarId of state.get(sourceId)!.selectedIds) {
+              try {
+                const page = await fetchDayEvents(token, calendarId, dateKey);
+                for (const item of page.items) {
+                  const event = parseEvent(item, { sourceId, calendarId });
+                  if (event) events.push(event);
+                }
+              } catch {
+                /* Keep successful calendars when another fails. */
+              }
+            }
+          } catch {
+            /* A source's token/cache failure must not affect other sources. */
+          }
+        }));
+        if (generation === dayGeneration) {
+          extraDays.set(dateKey, events);
+          publish();
+        }
+      } catch {
+        /* Day loads are best-effort and always resolve. */
+      } finally {
+        dayLoading = false;
+      }
+    },
     retryDeferred: () => runPass(),
     getState() {
       const sel = sources.flatMap((s) => {
