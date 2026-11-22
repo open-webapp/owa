@@ -62,6 +62,15 @@ Specifically, `drive-connect`'s `ensureFresh()` MUST fall through to the interac
 
 Contract tests are enforced in CI by `scripts/check-contracts.sh` (`.github/workflows/ci.yml`). Run it before committing any change under `packages/drive-connect`.
 
+## Shared peer ranges must stay aligned across packages
+
+MUST ensure the ERESOLVE incident (contacts 0.1.0 peered `vitest ^2.1.0` while consumers ran vitest 4; fixed in contacts 0.1.1) never recurs. npm checks peer ranges even for optional peers when the package is present, so a stale range breaks consumer installs.
+
+- Any package in `packages/` that declares a peer on a third-party tool shared by several packages (`vitest`, `react`, etc.) MUST use the same widened range as its siblings. Before publishing, compare the `peerDependencies` of every package and make them consistent, covering every major version consumers use (e.g. `^2.1.0 || ^4`).
+- When adding or bumping a peer range in one package, grep all `packages/*/package.json` for the same peer and update the others in the same change.
+- New packages must copy peer ranges from the current latest published siblings, never from an old template.
+- Keep a regression test asserting the peer range accepts the versions consumers use (see `packages/contacts/src/__tests__/peerRange.test.ts`); add the equivalent when a package gains a peer.
+
 ## Calendar dates use local browser time
 
 In `packages/calendar`, any "today" or date key derived from a `Date` must use the browser's local time (`getFullYear` / `getMonth` / `getDate`). Never use `toISOString().slice(0, 10)` (UTC) for this. Pure UTC arithmetic on date strings (e.g. `addDaysToIso`) may use UTC.
