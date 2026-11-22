@@ -10,7 +10,7 @@ Read-only Google Contacts sync (People API `connections` and `otherContacts`) in
 npm install @open-webapp/contacts
 ```
 
-Peer: `react ^19` (only needed for `@open-webapp/contacts/react`). `vitest ^2.1.0` is an optional peer, needed only for `@open-webapp/contacts/testing`'s `runStorageAdapterContract`.
+Peer: `react ^19` (only needed for `@open-webapp/contacts/react`). `vitest ^2.1.0 || ^4` is an optional peer, needed only for `@open-webapp/contacts/testing`'s `runStorageAdapterContract`.
 
 ## Entry points
 

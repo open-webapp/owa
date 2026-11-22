@@ -100,4 +100,4 @@ Index design (documented for host schemas; no prefix API in v1): `records` store
 
 ## Versioning
 
-0.1.0 initial release. Peer: `react ^19`; optional peer `vitest ^2.1.0`. The calendar package does not depend on this package; hosts connect them through a `resolveContact` function.
+0.1.0 initial release. Peer: `react ^19`; optional peer `vitest ^2.1.0 || ^4`. The calendar package does not depend on this package; hosts connect them through a `resolveContact` function.
