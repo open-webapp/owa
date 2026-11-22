@@ -22,7 +22,7 @@ Multi-account Google Calendar read-only sync (controller) plus React UI (`Calend
 npm install @open-webapp/calendar
 ```
 
-Peer: `react ^19`. `vitest` is an optional peer, needed only for `@open-webapp/calendar/testing`'s `runStorageAdapterContract`.
+Peer: `react ^19`. `vitest` (`^2.1.0 || ^4`) is an optional peer, needed only for `@open-webapp/calendar/testing`'s `runStorageAdapterContract`.
 
 ## Entry points
 
