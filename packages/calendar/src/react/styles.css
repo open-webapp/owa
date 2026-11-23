@@ -155,7 +155,7 @@
   position: sticky;
   top: 0;
   background: var(--calendar-surface);
-  z-index: 2;
+  z-index: 3;
 }
 
 .calendar-rsvp-chip-group {
@@ -261,6 +261,10 @@
 }
 
 .calendar-weekstrip {
+  position: sticky;
+  top: var(--chip-row-height, 44px);
+  z-index: 2;
+  background: var(--calendar-surface);
   padding: 0 16px 12px;
   color: var(--calendar-card-time);
   font-size: 11px;
@@ -286,7 +290,7 @@
 }
 
 .calendar-weekstrip-weeks--expanded {
-  height: 264px;
+  height: min(264px, 40vh);
   overflow-y: auto;
   scroll-snap-type: y mandatory;
 }
@@ -376,7 +380,8 @@
 
 .calendar-day-header {
   position: sticky;
-  top: var(--chip-row-height, 44px);
+  top: calc(var(--chip-row-height, 44px) + var(--weekstrip-height, 0px));
+  scroll-margin-top: calc(var(--chip-row-height, 44px) + var(--weekstrip-height, 0px));
   background: var(--calendar-header);
   color: var(--calendar-chip-text);
   font-size: 13px;

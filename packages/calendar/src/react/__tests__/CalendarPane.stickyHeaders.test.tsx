@@ -29,7 +29,7 @@ describe('CalendarPane sticky headers CSS contract', () => {
   it('.calendar-day-header is sticky, pinned below the chip row via the dynamic CSS variable (not a hardcoded px value)', () => {
     const body = extractRuleBody(css, '.calendar-day-header');
     expect(body).toMatch(/position:\s*sticky/);
-    expect(body).toMatch(/top:\s*var\(--chip-row-height/);
+    expect(body).toMatch(/top:\s*calc\(\s*var\(--chip-row-height[^)]*\)\s*\+\s*var\(--weekstrip-height/);
   });
 
   it('uses clearly distinct RSVP indicator colors in each color scheme', () => {
@@ -43,6 +43,35 @@ describe('CalendarPane sticky headers CSS contract', () => {
       expect(extractRuleBody(css, `.calendar-event-rsvp--${status}`)).toContain(`--status-text: ${light}`);
       expect(css).toMatch(new RegExp(`@media\\s*\\(prefers-color-scheme:\\s*dark\\)[\\s\\S]*\\.calendar-event-rsvp--${status}\\s*\\{\\s*--status-text:\\s*${dark}`));
     }
+  });
+});
+
+describe('CalendarPane sticky WeekStrip CSS contract', () => {
+  const cssPath = path.resolve(__dirname, '../styles.css');
+  const css = paletteContractCss(fs.readFileSync(cssPath, 'utf-8'));
+  const z = (sel: string) => {
+    const m = extractRuleBody(css, sel).match(/z-index:\s*(\d+)/);
+    expect(m, `${sel} z-index`).not.toBeNull();
+    return parseInt(m![1], 10);
+  };
+
+  it('.calendar-weekstrip is sticky below the chip row with an opaque background and layered z-index', () => {
+    const body = extractRuleBody(css, '.calendar-weekstrip');
+    expect(body).toMatch(/position:\s*sticky/);
+    expect(body).toMatch(/top:\s*var\(--chip-row-height/);
+    expect(body).toMatch(/background(-color)?:/);
+    expect(z('.calendar-weekstrip')).toBeLessThan(z('.calendar-rsvp-chips'));
+    expect(z('.calendar-weekstrip')).toBeGreaterThan(z('.calendar-day-header'));
+  });
+
+  it('.calendar-day-header sits below chip row + weekstrip and scroll-margin matches', () => {
+    const body = extractRuleBody(css, '.calendar-day-header');
+    expect(body).toMatch(/top:\s*calc\(var\(--chip-row-height.*var\(--weekstrip-height/);
+    expect(body).toMatch(/scroll-margin-top:\s*calc\(var\(--chip-row-height.*var\(--weekstrip-height/);
+  });
+
+  it('.calendar-weekstrip-weeks--expanded caps height with min(264px', () => {
+    expect(extractRuleBody(css, '.calendar-weekstrip-weeks--expanded')).toMatch(/height:[^;]*min\(264px/);
   });
 });
 
@@ -141,5 +170,65 @@ describe('CalendarPane chip-row height measurement', () => {
     );
 
     expect(paneEl.style.getPropertyValue('--chip-row-height')).toBe('56px');
+  });
+});
+
+describe('CalendarPane weekstrip height measurement', () => {
+  let resizeCallback: ResizeObserverCallback | null = null;
+  let observedElements: Element[] = [];
+  const originalResizeObserver = globalThis.ResizeObserver;
+
+  beforeEach(() => {
+    observedElements = [];
+    class ResizeObserverStub {
+      constructor(cb: ResizeObserverCallback) { resizeCallback = cb; }
+      observe(el: Element) { observedElements.push(el); }
+      unobserve() {}
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+  });
+
+  afterEach(() => {
+    globalThis.ResizeObserver = originalResizeObserver;
+    resizeCallback = null;
+  });
+
+  const fire = (target: Element, borderBox?: number) =>
+    resizeCallback!(
+      [{
+        target,
+        contentRect: { height: 10 } as DOMRectReadOnly,
+        ...(borderBox !== undefined ? { borderBoxSize: [{ blockSize: borderBox, inlineSize: 340 }] } : {}),
+      } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver
+    );
+
+  it('observes .calendar-weekstrip and writes its border-box height to --weekstrip-height on the pane', () => {
+    const { container } = render(<CalendarPane {...baseProps({ events: [makeEvent({})] })} />);
+    const paneEl = container.querySelector('.calendar-pane') as HTMLElement;
+    const stripEl = container.querySelector('.calendar-weekstrip') as HTMLElement;
+    expect(stripEl).not.toBeNull();
+    expect(observedElements).toContain(stripEl);
+    fire(stripEl, 60);
+    expect(paneEl.style.getPropertyValue('--weekstrip-height')).toBe('60px');
+  });
+
+  it('falls back to getBoundingClientRect height for the weekstrip when borderBoxSize is unavailable', () => {
+    const { container } = render(<CalendarPane {...baseProps({ events: [makeEvent({})] })} />);
+    const paneEl = container.querySelector('.calendar-pane') as HTMLElement;
+    const stripEl = container.querySelector('.calendar-weekstrip') as HTMLElement;
+    stripEl.getBoundingClientRect = () => ({ height: 48 } as DOMRect);
+    fire(stripEl);
+    expect(paneEl.style.getPropertyValue('--weekstrip-height')).toBe('48px');
+  });
+
+  it('chip-row callback still sets --chip-row-height independently of --weekstrip-height', () => {
+    const { container } = render(<CalendarPane {...baseProps({ events: [makeEvent({})] })} />);
+    const paneEl = container.querySelector('.calendar-pane') as HTMLElement;
+    const chipsEl = container.querySelector('.calendar-rsvp-chips') as HTMLElement;
+    fire(chipsEl, 56);
+    expect(paneEl.style.getPropertyValue('--chip-row-height')).toBe('56px');
+    expect(paneEl.style.getPropertyValue('--weekstrip-height')).toBe('');
   });
 });

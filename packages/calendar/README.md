@@ -328,6 +328,7 @@ Day ribbon styling: each day's ribbon alternates between two tones by day parity
 
 - `--calendar-footer-height` (default `64px`, set on `.calendar-pane`; override to match host footer)
 - `--chip-row-height` (fallback `44px`; host may set it to match its chip row for sticky headers)
+- `--weekstrip-height` (set by `CalendarPane` from the measured week strip border-box height, default `0px`; do not override)
 - `--rsvp-bar` (set internally per RSVP status; do not override)
 
 Week-strip hooks: `.calendar-week-strip` wraps the strip, `.calendar-week-strip-day` is each day button, and `.calendar-week-strip-day--active` marks the active day. The active day reuses the component's existing active/focus palette tokens, so hosts can style the strip through those scoped tokens without adding separate theme state.
@@ -343,6 +344,11 @@ The `--calendar-footer-height` variable is the one host value the overlay reads.
 The shared `.calendar-selector-trigger` uses border-box inline-flex, centered alignment, an 8px gap, 36px minimum height, 8px 12px padding, 6px radius, a 1px solid control border, inherited font and pointer cursor. `.calendar-selector-trigger-label` bounds long labels with ellipsis; `.calendar-selector-chevron` stays 12px and does not shrink or add a tab stop. Existing scoped surface/text/control-border tokens style the resting trigger, the hover token supplies its hover background, and the focus token supplies a 2px `:focus-visible` outline with 2px offset. The default 64px footer and 6px upward clearance remain unchanged. Only pane dropdowns use the approved trigger-left, pane-inset and available-height exception; standalone selectors retain their existing right-aligned 220px-to-320px geometry and 240px options cap. Import the shipped stylesheet for both footer and standalone use.
 
 Done, Select all and Clear use the approved action-only flat styling via `.calendar-selector-actions > button` in standalone and grouped footer dropdowns: transparent resting background, zero border, no shadow, inherited font, `--calendar-selector-text` color and pointer cursor. Hover uses `--calendar-hover`; pointer focus has no decorative outline, while keyboard `:focus-visible` uses a 2px solid `--calendar-focus` outline with 2px offset. Action padding, row flex layout and 8px gap/top/bottom margins, footer/dropdown geometry, trigger/search/option styling, other native controls and all selection, callback and focus-return contracts are preserved.
+
+## 0.17.2 (patch)
+
+- Fix: the week strip stays visible while scrolling, sticky directly below the sticky RSVP chip row. Sticky day headers are offset below both (`--chip-row-height` plus the pane-measured `--weekstrip-height`), and `scroll-margin-top` uses the same offset.
+- The expanded week strip height is capped at `min(264px, 40vh)`.
 
 ## 0.17.0 (minor, additive, non-breaking)
 

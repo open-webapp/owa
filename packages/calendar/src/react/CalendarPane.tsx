@@ -618,15 +618,17 @@ export function CalendarPane(props: CalendarPaneProps) {
     const paneEl = paneRef.current;
     const scrollEl = scrollRef.current;
     if (!chipsEl || !paneEl || !scrollEl) return;
+    const stripEl = paneEl.querySelector<HTMLElement>('.calendar-weekstrip');
     const ribbons = Array.from(scrollEl.querySelectorAll<HTMLElement>('.calendar-day-ribbon'));
     function updateRibbonWindows() {
       const viewport = scrollEl!.getBoundingClientRect();
       const chipsBottom = chipsEl!.getBoundingClientRect().bottom;
+      const stripBottom = stripEl?.getBoundingClientRect().bottom ?? chipsBottom;
       for (const ribbon of ribbons) {
         const bounds = ribbon.getBoundingClientRect();
         const header = ribbon.parentElement?.previousElementSibling;
         const headerBottom = header?.getBoundingClientRect().bottom ?? chipsBottom;
-        const top = Math.max(bounds.top, viewport.top, chipsBottom, headerBottom);
+        const top = Math.max(bounds.top, viewport.top, chipsBottom, stripBottom, headerBottom);
         const bottom = Math.min(bounds.bottom, viewport.bottom);
         ribbon.style.setProperty('--calendar-ribbon-window-top', `${Math.min(bounds.height, Math.max(0, top - bounds.top))}px`);
         ribbon.style.setProperty('--calendar-ribbon-window-height', `${Math.max(0, bottom - top)}px`);
@@ -637,6 +639,9 @@ export function CalendarPane(props: CalendarPaneProps) {
       for (const entry of entries) {
         if (entry.target === scrollEl) {
           paneEl.style.setProperty('--calendar-scroll-height', `${entry.target.getBoundingClientRect().height}px`);
+        } else if (entry.target === stripEl) {
+          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+          paneEl.style.setProperty('--weekstrip-height', `${height}px`);
         } else if (entry.target === chipsEl) {
           // contentRect excludes padding; the sticky day-header offset needs the
           // chip row's full border-box height (chips have vertical padding).
@@ -648,6 +653,7 @@ export function CalendarPane(props: CalendarPaneProps) {
     });
     observer.observe(scrollEl);
     observer.observe(chipsEl);
+    if (stripEl) observer.observe(stripEl);
     for (const header of dayHeaderRefs.current.values()) observer.observe(header);
     for (const ribbon of ribbons) observer.observe(ribbon);
     scrollEl.addEventListener('scroll', updateRibbonWindows, { passive: true });
