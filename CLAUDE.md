@@ -40,6 +40,8 @@ git tag contacts-v<version>
 git push origin contacts-v<version>
 ```
 
+After pushing a package tag, ALWAYS report the publish status in the same turn: check the "Publish packages" run for that tag (`gh run list --limit 5`, wait via `gh run watch <id>` if still running) and confirm the new version on npm (`npm view @open-webapp/<package> version`). Report success, failure (with the failing step), or still-running; never end the turn with only "tag pushed".
+
 This automates the release process by triggering the publish workflow without manual tag creation. Each package has its own independent versioning and release lifecycle.
 
 Consumers of `notes-core` must pin its exact published version rather than use a version range.
